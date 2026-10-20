@@ -1,0 +1,19 @@
+/* ============================================================
+   Adaugă acest bloc LA FINALUL fișierului app/globals.css
+   (nu înlocui conținutul existent: Tailwind și variabilele tale rămân).
+   Optimizări pentru Safari pe iOS.
+   ============================================================ */
+
+/* Safari nu mărește singur textul la rotirea ecranului */
+html {
+  -webkit-text-size-adjust: 100%;
+  text-size-adjust: 100%;
+}
+
+/* Sub 16px, Safari pe iOS face zoom automat când se atinge un câmp de text.
+   Forțăm 16px pe toate câmpurile de formular, indiferent de clasele Tailwind. */
+input,
+select,
+textarea {
+  font-size: 16px;
+}
