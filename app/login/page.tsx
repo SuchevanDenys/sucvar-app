@@ -2,116 +2,34 @@
 "use client";
 
 import React, { useState, useEffect } from 'react';
-import Link from 'next/link';
 import { useRouter } from 'next/navigation';
 import {
   ArrowRight,
-  Trash2,
   Eye,
   EyeOff,
-  ShieldCheck,
-  Briefcase,
-  GraduationCap,
-  UserCheck,
-  LogOut,
-  Plus,
   Database,
   MailCheck,
-  X,
-  ExternalLink,
-  Copy,
-  Check,
-  Layers,
 } from 'lucide-react';
-import Navbar from '@/app/components/Navbar';
-import SucvarLogo from '@/app/components/SucvarLogo';
-import { notifyAccountChange } from '@/app/components/AccountWidget';
-import BeforeAfterSlider from '@/app/components/BeforeAfterSlider';
+import Navbar from '@/app/components/layout/Navbar';
+import SucvarLogo from '@/app/components/layout/SucvarLogo';
+import { notifyAccountChange } from '@/app/components/layout/AccountWidget';
 import {
-  SPACE_MODES,
-  VISUAL_STYLES,
   calculateEngineering,
   generateSpecItems,
 } from '@/app/data/catalog';
-import {
-  supabase,
-  ACTIVE_PROJECT_KEY,
-  signInWithEmail,
-  signUpWithEmail,
-  signInWithGoogle,
-  resendConfirmationEmail,
-  sendPasswordReset,
-  updatePassword,
-  subscribeToAuthEvents,
-  getSessionInfo,
-  signOutUser,
-  fetchProjectsFromDb,
-  deleteProjectFromDb,
-} from '@/app/lib/supabase';
-import { getUi } from '@/app/lib/theme';
-import { formatProjectDate } from '@/app/lib/format';
-import { DEMO_TIER_KEY, notifyPlanChange } from '@/app/lib/plan';
-import { usePlan } from '@/app/lib/usePlan';
-import { Language, SavedProject, SubscriptionTier, ThemeMode } from '@/app/types/studio';
-
-const USER_KEY = 'sucvar_user_email';
-const USER_ROLE_KEY = 'sucvar_user_role';
-const DEMO_KEY = 'sucvar_demo_mode';
-
-// Iconița vectorială oficială Google pentru butonul OAuth
-function GoogleIcon() {
-  return (
-    <svg className="w-4 h-4 shrink-0" viewBox="0 0 24 24" aria-hidden="true">
-      <path
-        fill="#4285F4"
-        d="M23.49 12.27c0-.79-.07-1.54-.19-2.27H12v4.51h6.47c-.29 1.48-1.14 2.73-2.4 3.58v2.98h3.86c2.26-2.09 3.56-5.17 3.56-8.8z"
-      />
-      <path
-        fill="#34A853"
-        d="M12 24c3.24 0 5.95-1.08 7.93-2.91l-3.86-2.98c-1.08.72-2.45 1.16-4.07 1.16-3.13 0-5.78-2.11-6.73-4.96H1.29v3.09C3.26 21.3 7.31 24 12 24z"
-      />
-      <path
-        fill="#FBBC05"
-        d="M5.27 14.31c-.24-.72-.38-1.49-.38-2.31s.14-1.59.38-2.31V6.6H1.29C.47 8.24 0 10.06 0 12s.47 3.76 1.29 5.4l3.98-3.09z"
-      />
-      <path
-        fill="#EA4335"
-        d="M12 4.75c1.77 0 3.35.61 4.6 1.8l3.42-3.42C17.95 1.19 15.24 0 12 0 7.31 0 3.26 2.7 1.29 6.6l3.98 3.09c.95-2.85 3.6-4.94 6.73-4.94z"
-      />
-    </svg>
-  );
-}
-
-// Profiluri DEMO pentru prezentarea la comisie
-const QUICK_PROFILES = [
-  {
-    id: 'architect',
-    email: 'denys@sucvar.ro',
-    roleRo: 'Arhitect Sistem (Fondator)',
-    roleEn: 'Lead Systems Architect',
-    badge: 'PRO',
-    tier: 'pro' as SubscriptionTier,
-    icon: ShieldCheck,
-  },
-  {
-    id: 'committee',
-    email: 'comisie@usv.ro',
-    roleRo: 'Comisie Evaluare Licență',
-    roleEn: 'Thesis Evaluation Board',
-    badge: 'USV',
-    tier: 'pro' as SubscriptionTier,
-    icon: GraduationCap,
-  },
-  {
-    id: 'client',
-    email: 'client@sucvar.ro',
-    roleRo: 'Client / Beneficiar Proiect',
-    roleEn: 'Project Homeowner / Client',
-    badge: 'STUDIO',
-    tier: 'starter' as SubscriptionTier,
-    icon: Briefcase,
-  },
-];
+import { supabase } from '@/app/lib/supabase/client';
+import { STORAGE_KEYS, readStorage, removeStorage, writeStorage } from '@/app/lib/storage';
+import { signInWithEmail, signUpWithEmail, signInWithGoogle, resendConfirmationEmail, sendPasswordReset, updatePassword, subscribeToAuthEvents, getSessionInfo, signOutUser } from '@/app/lib/supabase/auth';
+import { fetchProjectsFromDb, deleteProjectFromDb } from '@/app/lib/supabase/projects';
+import { getUi } from '@/app/lib/theme/tokens';
+import { usePrefs } from '@/app/lib/theme/usePrefs';
+import GoogleIcon from '@/app/components/login/GoogleIcon';
+import AccountDashboard from '@/app/components/login/AccountDashboard';
+import ProjectModal from '@/app/components/login/ProjectModal';
+import { QUICK_PROFILES } from '@/app/components/login/quickProfiles';
+import { notifyPlanChange } from '@/app/lib/plan/client';
+import { usePlan } from '@/app/lib/plan/usePlan';
+import type { PlanTier, SavedProject } from '@/app/types';
 
 type AuthTab = 'signin' | 'signup' | 'forgot';
 
@@ -120,8 +38,7 @@ export default function LoginAndAccountPage() {
   const plan = usePlan();
 
   // ---------- Setări pagină ----------
-  const [lang, setLang] = useState<Language>('ro');
-  const [theme, setTheme] = useState<ThemeMode>('light');
+  const { lang, isDark } = usePrefs();
 
   // ---------- Stare formular ----------
   const [authTab, setAuthTab] = useState<AuthTab>('signin');
@@ -147,7 +64,6 @@ export default function LoginAndAccountPage() {
   const [isRecovery, setIsRecovery] = useState<boolean>(false);
 
   // ---------- Funcții ajutătoare ----------
-  const isDark = theme === 'dark';
   const ui = getUi(isDark);
   const t = (textRo: string, textEn: string) => (lang === 'ro' ? textRo : textEn);
 
@@ -183,11 +99,11 @@ export default function LoginAndAccountPage() {
     isCloud: boolean,
     avatar: string | null = null,
   ) => {
-    window.localStorage.setItem(USER_KEY, accountEmail);
-    window.localStorage.setItem(USER_ROLE_KEY, role);
+    writeStorage(STORAGE_KEYS.userEmail, accountEmail);
+    writeStorage(STORAGE_KEYS.userRole, role);
     if (isCloud) {
-      window.localStorage.removeItem(DEMO_KEY);
-      window.localStorage.removeItem(DEMO_TIER_KEY);
+      removeStorage(STORAGE_KEYS.demoMode);
+      removeStorage(STORAGE_KEYS.demoTier);
     }
     notifyAccountChange(); // actualizează widgetul din Navbar
     notifyPlanChange(); // actualizează badge-ul de plan (STUDIO / PRO)
@@ -208,13 +124,13 @@ export default function LoginAndAccountPage() {
       const session = await getSessionInfo();
       if (session) {
         const role =
-          session.fullName || window.localStorage.getItem(USER_ROLE_KEY) || 'Studio Member';
+          session.fullName || readStorage(STORAGE_KEYS.userRole) || 'Studio Member';
         const list = await fetchProjectsFromDb(session.email);
         if (!isPageActive) return;
-        window.localStorage.setItem(USER_KEY, session.email);
-        window.localStorage.setItem(USER_ROLE_KEY, role);
-        window.localStorage.removeItem(DEMO_KEY);
-        window.localStorage.removeItem(DEMO_TIER_KEY);
+        writeStorage(STORAGE_KEYS.userEmail, session.email);
+        writeStorage(STORAGE_KEYS.userRole, role);
+        removeStorage(STORAGE_KEYS.demoMode);
+        removeStorage(STORAGE_KEYS.demoTier);
         setUserRole(role);
         setAvatarUrl(session.avatarUrl);
         setIsCloudSession(true);
@@ -224,11 +140,11 @@ export default function LoginAndAccountPage() {
       }
 
       // 2. Fără sesiune Cloud: verificăm dacă a fost selectat un profil Demo
-      const demoEmail = window.localStorage.getItem(USER_KEY);
-      if (window.localStorage.getItem(DEMO_KEY) === '1' && demoEmail) {
+      const demoEmail = readStorage(STORAGE_KEYS.userEmail);
+      if (readStorage(STORAGE_KEYS.demoMode) === '1' && demoEmail) {
         const list = await fetchProjectsFromDb(demoEmail);
         if (!isPageActive) return;
-        setUserRole(window.localStorage.getItem(USER_ROLE_KEY) || 'Studio Member');
+        setUserRole(readStorage(STORAGE_KEYS.userRole) || 'Studio Member');
         setIsCloudSession(false);
         setLoggedUser(demoEmail);
         setProjects(list);
@@ -275,14 +191,14 @@ export default function LoginAndAccountPage() {
   const handleQuickAccess = async (
     profileEmail: string,
     roleLabel: string,
-    tier: SubscriptionTier,
+    tier: PlanTier,
   ) => {
     setIsSubmitting(true);
     resetMessages();
     try {
       await signOutUser();
-      window.localStorage.setItem(DEMO_KEY, '1');
-      window.localStorage.setItem(DEMO_TIER_KEY, tier); // planul profilului demo
+      writeStorage(STORAGE_KEYS.demoMode, '1');
+      writeStorage(STORAGE_KEYS.demoTier, tier); // planul profilului demo
       await openAccount(profileEmail, roleLabel, false, null);
       setAuthStatus(
         t(
@@ -439,10 +355,10 @@ export default function LoginAndAccountPage() {
 
   const handleLogout = async () => {
     await signOutUser();
-    window.localStorage.removeItem(USER_KEY);
-    window.localStorage.removeItem(USER_ROLE_KEY);
-    window.localStorage.removeItem(DEMO_KEY);
-    window.localStorage.removeItem(DEMO_TIER_KEY);
+    removeStorage(STORAGE_KEYS.userEmail);
+    removeStorage(STORAGE_KEYS.userRole);
+    removeStorage(STORAGE_KEYS.demoMode);
+    removeStorage(STORAGE_KEYS.demoTier);
     notifyAccountChange(); // actualizează widgetul din Navbar
     notifyPlanChange();
     setIsCloudSession(false);
@@ -468,11 +384,7 @@ export default function LoginAndAccountPage() {
 
   // Deschide proiectul selectat direct în Studio (/generate) cu toate cotele și imaginile lui
   const handleOpenInStudio = (project: SavedProject) => {
-    try {
-      window.localStorage.setItem(ACTIVE_PROJECT_KEY, JSON.stringify(project));
-    } catch {
-      // ignore quota errors
-    }
+    writeStorage(STORAGE_KEYS.activeProject, JSON.stringify(project));
     router.push('/generate');
   };
 
@@ -485,17 +397,6 @@ export default function LoginAndAccountPage() {
       // ignore
     }
   };
-
-  // ---------- Calcul statistici portofoliu ----------
-  let totalAreaDesigned = 0;
-  let totalWallsCalculated = 0;
-  for (const project of projects) {
-    const w = Number(project.dimensions?.width) || 4;
-    const l = Number(project.dimensions?.length) || 5;
-    totalAreaDesigned += w * l;
-    const eng = calculateEngineering(project.dimensions, project.mode, project.spaceType);
-    totalWallsCalculated += eng.netWallArea;
-  }
 
   let submitLabel = t('Intră în cont', 'Sign in to account');
   if (authTab === 'signup') submitLabel = t('Creează contul', 'Create account');
@@ -530,7 +431,7 @@ export default function LoginAndAccountPage() {
 
   return (
     <div className={`min-h-screen font-sans pb-24 transition-colors ${ui.page}`}>
-      <Navbar lang={lang} setLang={setLang} theme={theme} setTheme={setTheme} />
+      <Navbar />
 
       <div className="max-w-6xl mx-auto px-4 sm:px-6 pt-12">
         {isRecovery ? (
@@ -831,371 +732,36 @@ export default function LoginAndAccountPage() {
           </div>
         ) : (
           /* ================= DASHBOARD & ARHIVĂ INTERACTIVĂ ================= */
-          <div className="space-y-8">
-            {/* Header Utilizator */}
-            <div
-              className={`p-6 rounded-md border flex flex-wrap items-center justify-between gap-4 ${ui.card}`}
-            >
-              <div className="flex items-center gap-4">
-                {avatarUrl ? (
-                  <img
-                    src={avatarUrl}
-                    alt={loggedUser}
-                    referrerPolicy="no-referrer"
-                    className="w-12 h-12 rounded-md object-cover border border-stone-300/40"
-                  />
-                ) : (
-                  <div
-                    className={`w-12 h-12 rounded-md flex items-center justify-center text-base font-bold uppercase ${ui.btn}`}
-                  >
-                    {loggedUser[0]}
-                  </div>
-                )}
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-mono uppercase px-2 py-0.5 rounded-sm bg-[#3B4D43] text-white">
-                      {userRole}
-                    </span>
-                    <span
-                      className={`text-[10px] font-mono font-semibold uppercase px-2 py-0.5 rounded-sm border tracking-widest ${
-                        plan.isPro ? 'bg-[#3B4D43] text-white border-[#3B4D43]' : `${ui.muted} border-current`
-                      }`}
-                    >
-                      {plan.isPro ? 'PRO' : 'STUDIO'}
-                    </span>
-                    <span className={`text-xs flex items-center gap-1 ${ui.accent}`}>
-                      <UserCheck className="w-3.5 h-3.5" />
-                      {isCloudSession
-                        ? t('Sincronizat Supabase Cloud', 'Supabase Cloud Synced')
-                        : t('Sesiune locală', 'Local session')}
-                    </span>
-                  </div>
-                  <h2 className="text-lg font-semibold break-all mt-1">{loggedUser}</h2>
-                  {authStatus && <p className={`text-xs mt-0.5 ${ui.muted}`}>{authStatus}</p>}
-                  {!plan.isLoading && !plan.isPro && (
-                    <p className={`text-xs mt-0.5 ${ui.muted}`}>
-                      {t('Generări luna aceasta', 'Generations this month')}: {plan.used} / {plan.limit} ·{' '}
-                      <Link href="/#pricing" className="underline underline-offset-4">
-                        {t('Treci pe Professional', 'Upgrade to Professional')}
-                      </Link>
-                    </p>
-                  )}
-                </div>
-              </div>
-
-              <div className="flex items-center gap-3">
-                <Link
-                  href="/generate"
-                  className={`inline-flex items-center gap-2 h-10 px-5 rounded-md text-xs font-semibold uppercase tracking-widest touch-manipulation ${ui.btn}`}
-                >
-                  <Plus className="w-4 h-4" />
-                  <span>{t('Proiect nou', 'New project')}</span>
-                </Link>
-                <button
-                  type="button"
-                  onClick={handleLogout}
-                  className={`inline-flex items-center gap-1.5 h-10 px-4 rounded-md border text-xs font-semibold uppercase tracking-widest cursor-pointer touch-manipulation ${ui.btnGhost}`}
-                >
-                  <LogOut className="w-3.5 h-3.5" />
-                  <span>{t('Ieșire', 'Sign out')}</span>
-                </button>
-              </div>
-            </div>
-
-            {/* Statistici Portofoliu */}
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-              <div className={`p-5 rounded-md border ${ui.card}`}>
-                <p className={eyebrowClass}>{t('Proiecte în arhivă', 'Archived projects')}</p>
-                <p className="text-2xl font-semibold font-mono mt-2">{projects.length}</p>
-              </div>
-              <div className={`p-5 rounded-md border ${ui.card}`}>
-                <p className={eyebrowClass}>
-                  {t('Suprafață pardoseală proiectată', 'Total floor area designed')}
-                </p>
-                <p className="text-2xl font-semibold font-mono mt-2">
-                  {totalAreaDesigned.toFixed(1)} m²
-                </p>
-              </div>
-              <div className={`p-5 rounded-md border ${ui.card}`}>
-                <p className={eyebrowClass}>
-                  {t('Arie netă pereți calculată', 'Total net wall area')}
-                </p>
-                <p className={`text-2xl font-semibold font-mono mt-2 ${ui.accent}`}>
-                  {totalWallsCalculated.toFixed(1)} m²
-                </p>
-              </div>
-            </div>
-
-            {/* Arhiva de Proiecte & Devize */}
-            <div className="space-y-4">
-              <div className="flex items-center justify-between">
-                <h3 className="text-sm font-semibold uppercase tracking-[0.2em]">
-                  {t('Arhivă proiecte & devize tehnice', 'Project & technical spec archive')}
-                </h3>
-                {projects.length > 0 && (
-                  <span className={`text-xs ${ui.muted}`}>
-                    {t('Apasă pe un proiect pentru a vedea devizul complet', 'Click a project to inspect specs')}
-                  </span>
-                )}
-              </div>
-
-              {projects.length === 0 ? (
-                <div className={`p-12 rounded-md border text-center space-y-4 ${ui.card}`}>
-                  <p className={`text-sm ${ui.muted}`}>
-                    {t(
-                      'Nu ai niciun proiect salvat în acest cont. Deschide Studio, generează o amenajare și apasă „Salvează în cont”.',
-                      'No saved projects yet. Open Studio, generate a design and click "Save to account".',
-                    )}
-                  </p>
-                  <Link
-                    href="/generate"
-                    className={`inline-flex items-center gap-2 h-10 px-6 rounded-md text-xs font-semibold uppercase tracking-widest touch-manipulation ${ui.btn}`}
-                  >
-                    <span>{t('Deschide Studio', 'Open Studio')}</span>
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                </div>
-              ) : (
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-                  {projects.map((project) => {
-                    const width = Number(project.dimensions?.width) || 4;
-                    const length = Number(project.dimensions?.length) || 5;
-                    const height = Number(project.dimensions?.height) || 2.6;
-                    const projectArea = width * length;
-                    const previewImage = project.generatedImage || project.originalImage;
-                    const styleObj = VISUAL_STYLES.find((s) => s.id === project.styleId);
-                    const styleLabel = styleObj
-                      ? lang === 'ro'
-                        ? styleObj.nameRo
-                        : styleObj.nameEn
-                      : project.styleId;
-
-                    return (
-                      <div
-                        key={project.id}
-                        role="button"
-                        tabIndex={0}
-                        onClick={() => setActiveProject(project)}
-                        onKeyDown={(e) => {
-                          if (e.key === 'Enter' || e.key === ' ') {
-                            e.preventDefault();
-                            setActiveProject(project);
-                          }
-                        }}
-                        className={`group rounded-md border overflow-hidden text-left transition-all hover:-translate-y-0.5 hover:shadow-lg cursor-pointer touch-manipulation ${ui.card}`}
-                      >
-                        {/* Imaginea generată (cu fallback la originalImage sau placeholder arhitectural) */}
-                        <div className={`relative w-full h-56 overflow-hidden ${ui.soft}`}>
-                          {previewImage ? (
-                            <img
-                              src={previewImage}
-                              alt={project.title}
-                              referrerPolicy="no-referrer"
-                              className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-[1.02]"
-                            />
-                          ) : (
-                            <div className="w-full h-full flex flex-col items-center justify-center gap-2 px-4 text-center">
-                              <Layers className={`w-6 h-6 opacity-50 ${ui.accent}`} />
-                              <span className={`text-xs font-mono ${ui.muted}`}>
-                                {width} × {length} × {height} m ({projectArea.toFixed(1)} m²)
-                              </span>
-                            </div>
-                          )}
-
-                          <span className="absolute top-3 left-3 bg-black/75 backdrop-blur-sm text-white text-[10px] font-mono uppercase tracking-widest px-2.5 py-1 rounded-sm">
-                            {styleLabel}
-                          </span>
-                          <span className="absolute bottom-3 right-3 bg-[#3B4D43] text-white text-[10px] font-semibold uppercase tracking-widest px-2.5 py-1 rounded-sm">
-                            {t('Vezi devizul →', 'View specs →')}
-                          </span>
-                        </div>
-
-                        {/* Detalii Card */}
-                        <div className="p-5 flex justify-between items-start gap-3">
-                          <div className="min-w-0">
-                            <h4 className="font-semibold text-base truncate">{project.title}</h4>
-                            <p className={`text-xs font-mono mt-1 ${ui.muted}`}>
-                              {width} × {length} × {height} m · {projectArea.toFixed(1)} m² ·{' '}
-                              {formatProjectDate(project.createdAt)}
-                            </p>
-                          </div>
-
-                          <div className="flex items-center gap-2 shrink-0">
-                            <button
-                              type="button"
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                handleOpenInStudio(project);
-                              }}
-                              title={t('Deschide în Studio', 'Open in Studio')}
-                              className={`h-9 px-3 rounded-sm border text-[11px] font-semibold uppercase tracking-wider inline-flex items-center gap-1.5 cursor-pointer touch-manipulation ${ui.btnGhost}`}
-                            >
-                              <ExternalLink className="w-3.5 h-3.5" />
-                              <span>Studio</span>
-                            </button>
-                            <button
-                              type="button"
-                              onClick={(e) => handleDeleteProject(project.id, e)}
-                              aria-label="Delete project"
-                              className={`h-9 w-9 rounded-sm border flex items-center justify-center cursor-pointer touch-manipulation ${ui.btnGhost}`}
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </button>
-                          </div>
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          </div>
+          <AccountDashboard
+            lang={lang}
+            isDark={isDark}
+            loggedUser={loggedUser}
+            avatarUrl={avatarUrl}
+            userRole={userRole}
+            isCloudSession={isCloudSession}
+            authStatus={authStatus}
+            plan={plan}
+            projects={projects}
+            onLogout={handleLogout}
+            onDeleteProject={handleDeleteProject}
+            onOpenInStudio={handleOpenInStudio}
+            onSelectProject={setActiveProject}
+          />
         )}
       </div>
 
-      {/* ================= MODAL DETALII PROIECT & DEVIZ TEHNIC ================= */}
       {activeProject && activeEng && (
-        <div
-          className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
-          onClick={() => setActiveProject(null)}
-        >
-          <div
-            className={`w-full max-w-4xl max-h-[90vh] overflow-y-auto rounded-md border p-6 sm:p-8 space-y-6 ${ui.card}`}
-            onClick={(e) => e.stopPropagation()}
-          >
-            {/* Header Modal */}
-            <div className={`flex items-start justify-between gap-4 border-b pb-4 ${ui.line}`}>
-              <div>
-                <p className={eyebrowClass}>
-                  {SPACE_MODES[activeProject.mode]?.labelRo ?? activeProject.mode} ·{' '}
-                  {formatProjectDate(activeProject.createdAt)}
-                </p>
-                <h3 className="text-xl font-semibold mt-1">{activeProject.title}</h3>
-              </div>
-              <button
-                type="button"
-                onClick={() => setActiveProject(null)}
-                aria-label="Close modal"
-                className={`p-2 rounded-md border cursor-pointer touch-manipulation ${ui.btnGhost}`}
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            {/* Vizualizare Before / After sau Imaginea Generată */}
-            {activeProject.originalImage && activeProject.generatedImage ? (
-              <BeforeAfterSlider
-                beforeImg={activeProject.originalImage}
-                afterImg={activeProject.generatedImage}
-                beforeLabel={t('Înainte', 'Before')}
-                afterLabel={t('Proiect SUCVAR', 'SUCVAR design')}
-              />
-            ) : activeProject.generatedImage || activeProject.originalImage ? (
-              <img
-                src={(activeProject.generatedImage || activeProject.originalImage) ?? ''}
-                alt={activeProject.title}
-                referrerPolicy="no-referrer"
-                className="w-full max-h-[420px] object-cover rounded-md border border-stone-300/40"
-              />
-            ) : null}
-
-            {/* Specificații Inginerești */}
-            <div className="space-y-2">
-              <p className={eyebrowClass}>
-                {t('Specificații inginerești calculate', 'Calculated engineering specifications')}
-              </p>
-              <div
-                className={`grid grid-cols-2 sm:grid-cols-4 gap-px border rounded-md overflow-hidden ${ui.line} ${ui.soft}`}
-              >
-                <div className={`p-3.5 ${ui.card}`}>
-                  <p className={`text-[11px] ${ui.muted}`}>{t('Suprafață', 'Floor area')}</p>
-                  <p className="text-base font-semibold font-mono mt-0.5">{activeEng.floorArea} m²</p>
-                </div>
-                <div className={`p-3.5 ${ui.card}`}>
-                  <p className={`text-[11px] ${ui.muted}`}>{t('Arie netă pereți', 'Net wall area')}</p>
-                  <p className="text-base font-semibold font-mono mt-0.5">{activeEng.netWallArea} m²</p>
-                </div>
-                <div className={`p-3.5 ${ui.card}`}>
-                  <p className={`text-[11px] ${ui.muted}`}>{t('Pardoseală +10%', 'Flooring +10%')}</p>
-                  <p className="text-base font-semibold font-mono mt-0.5">
-                    {activeEng.flooringWithWaste} m²
-                  </p>
-                </div>
-                <div className={`p-3.5 ${ui.card}`}>
-                  <p className={`text-[11px] ${ui.muted}`}>{t('Vopsea (2 straturi)', 'Paint (2 coats)')}</p>
-                  <p className="text-base font-semibold font-mono mt-0.5">{activeEng.paintLiters} L</p>
-                </div>
-              </div>
-            </div>
-
-            {/* Devizul Tehnic de Producător */}
-            <div className="space-y-2">
-              <p className={eyebrowClass}>
-                {t('Specificații tehnice de producător', 'Manufacturer technical specifications')}
-              </p>
-              <div className={`border rounded-md divide-y ${ui.line}`}>
-                {activeSpecs.map((item) => {
-                  const keywords = lang === 'ro' ? item.searchKeywordsRo : item.searchKeywordsEn;
-                  return (
-                    <div key={item.id} className="p-4 space-y-1.5">
-                      <div className="flex items-center justify-between gap-2">
-                        <span className={`text-[10px] uppercase tracking-widest ${ui.accent}`}>
-                          {lang === 'ro' ? item.categoryRo : item.categoryEn}
-                        </span>
-                        <span className="text-xs font-mono font-semibold">{item.quantity}</span>
-                      </div>
-                      <p className="text-sm font-semibold">
-                        {lang === 'ro' ? item.nameRo : item.nameEn}
-                      </p>
-                      <p className={`text-xs leading-relaxed ${ui.muted}`}>
-                        {lang === 'ro' ? item.technicalSpecRo : item.technicalSpecEn}
-                      </p>
-                      <div className="pt-1 flex items-center justify-between gap-2">
-                        <code className={`text-[11px] font-mono ${ui.accent}`}>{keywords}</code>
-                        <button
-                          type="button"
-                          onClick={() => handleCopyKeywords(item.id, keywords)}
-                          className={`h-7 px-2.5 rounded border text-[11px] inline-flex items-center gap-1 cursor-pointer touch-manipulation ${ui.btnGhost}`}
-                        >
-                          {copiedKeyId === item.id ? (
-                            <>
-                              <Check className="w-3 h-3 text-green-500" />
-                              <span>{t('Copiat', 'Copied')}</span>
-                            </>
-                          ) : (
-                            <>
-                              <Copy className="w-3 h-3" />
-                              <span>{t('Copiază', 'Copy')}</span>
-                            </>
-                          )}
-                        </button>
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-
-            {/* Acțiuni Modal */}
-            <div className="flex flex-wrap items-center justify-between gap-3 pt-2">
-              <button
-                type="button"
-                onClick={() => handleOpenInStudio(activeProject)}
-                className={`inline-flex items-center gap-2 h-11 px-6 rounded-md text-xs font-semibold uppercase tracking-widest cursor-pointer touch-manipulation ${ui.btn}`}
-              >
-                <ExternalLink className="w-4 h-4" />
-                <span>{t('Redeschide în Studio & Export PDF', 'Reopen in Studio & Export PDF')}</span>
-              </button>
-              <button
-                type="button"
-                onClick={() => setActiveProject(null)}
-                className={`h-11 px-5 rounded-md border text-xs font-semibold uppercase tracking-widest cursor-pointer touch-manipulation ${ui.btnGhost}`}
-              >
-                {t('Închide', 'Close')}
-              </button>
-            </div>
-          </div>
-        </div>
+        <ProjectModal
+          project={activeProject}
+          eng={activeEng}
+          specs={activeSpecs}
+          lang={lang}
+          isDark={isDark}
+          copiedKeyId={copiedKeyId}
+          onClose={() => setActiveProject(null)}
+          onCopyKeywords={handleCopyKeywords}
+          onOpenInStudio={handleOpenInStudio}
+        />
       )}
     </div>
   );

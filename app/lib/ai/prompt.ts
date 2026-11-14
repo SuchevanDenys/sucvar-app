@@ -2,7 +2,7 @@
 // Construiește textul (promptul) trimis modelului, din alegerile făcute în Studio.
 // Este independent de furnizor: același prompt merge cu Stable Diffusion sau Replicate.
 import { SPACE_MODES, VISUAL_STYLES } from '@/app/data/catalog';
-import { AiSettings, DesignMode } from '@/app/types/studio';
+import { AiSettings, DesignMode } from '@/app/types';
 
 export interface PromptInput {
   mode: DesignMode;
@@ -24,9 +24,12 @@ export function buildPrompt(input: PromptInput): BuiltPrompt {
 
   // Dacă id-ul stilului sau al configurației nu există, folosim prima variantă
   const style = VISUAL_STYLES.find((item) => item.id === input.styleId) ?? VISUAL_STYLES[0];
+  // Layout-urile aparțin fiecărui tip de spațiu (nu modului)
+  const currentSpace =
+    currentMode.spaces.find((item) => item.id === input.spaceType) ?? currentMode.spaces[0];
   const layout =
-    currentMode.layouts.find((item) => item.id === input.layoutPreset) ?? currentMode.layouts[0];
-  const space = input.spaceType || currentMode.spaces[0].id;
+    currentSpace.layouts.find((item) => item.id === input.layoutPreset) ?? currentSpace.layouts[0];
+  const space = currentSpace.id;
 
   const areaText = (input.width * input.length).toFixed(1);
 

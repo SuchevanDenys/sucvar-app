@@ -2,7 +2,7 @@
 // Contractul pe care îl respectă orice furnizor de imagini AI.
 // Pentru a adăuga un furnizor nou: creezi un fișier care implementează `ImageProvider`
 // și îl înregistrezi în providers/index.ts. Restul aplicației nu se schimbă.
-import { AiProviderId, AiSettings } from '@/app/types/studio';
+import { AiProviderId, AiSettings } from '@/app/types';
 
 // Tot ce are nevoie un furnizor ca să genereze o imagine
 export interface GenerationRequest {

@@ -1,6 +1,10 @@
-"use client";
+// Dev-only page for verifying that environment variables are configured.
+// Renders a 404 in production so it never exposes configuration state.
+import { notFound } from "next/navigation";
 
 export default function EnvCheck() {
+  if (process.env.NODE_ENV === "production") notFound();
+
   return (
     <pre style={{ padding: 24 }}>
       {JSON.stringify(

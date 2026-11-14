@@ -6,292 +6,28 @@
 // SSR safety: no Date / Math.random / window access during render; all storage reads sit in effects.
 "use client";
 
-import React, { useState, useEffect } from 'react';
+import React from 'react';
 import Link from 'next/link';
-import Image from 'next/image';
-import { ArrowRight, ArrowUpRight, Check, Cpu, ExternalLink, FileCheck2, FileSpreadsheet, Ruler } from 'lucide-react';
-import Navbar from '@/app/components/Navbar';
-import SucvarLogo from '@/app/components/SucvarLogo';
-import BeforeAfterSlider from '@/app/components/BeforeAfterSlider';
-import Reveal from '@/app/components/Reveal';
+import { ArrowRight, ArrowUpRight, Check, ExternalLink, FileSpreadsheet } from 'lucide-react';
+import Navbar from '@/app/components/layout/Navbar';
+import BeforeAfterSlider from '@/app/components/ui/BeforeAfterSlider';
+import Reveal from '@/app/components/ui/Reveal';
 import { PRICING_PLANS, VISUAL_STYLES } from '@/app/data/catalog';
-import { getSkin, EYEBROW, LiveDot, Corners, Frame, SectionHeading, CONTAINER, ruleClass } from '@/app/lib/skin';
-import { Language, ThemeMode } from '@/app/types/studio';
-
-// Fixed year (no new Date() during render, it breaks Next.js 16 prerendering)
-const COPYRIGHT_YEAR = 2026;
-
-const SELECTED_PLAN_KEY = 'sucvar_selected_plan';
-const PREFERRED_STYLE_KEY = 'sucvar_preferred_style';
-
-// Static footer telemetry from the prototype. Placeholder values: wire to real monitoring or delete.
-const FOOTER_LATENCY_MS = 38;
-const FOOTER_UPTIME = '99.98%';
-
-// ── Hero proof metrics ──────────────────────────────────────────────────────
-const HERO_STATS = [
-  { value: '45s', ro: 'față de 6 ore de releveu și metraj manual', en: 'vs. 6 hours of manual survey & takeoff' },
-  { value: '15,000+ m²', ro: 'simulați și calculați normativ', en: 'simulated & norm-calculated' },
-  { value: '400+', ro: 'specificații mapate la standarde europene (SR EN, ISO, DIN)', en: 'specifications mapped to European Standards (SR EN, ISO, DIN)' },
-  { value: '0%', ro: 'derivă de specificație între randarea AI și execuție', en: 'specification drift between AI render and execution' },
-];
-
-// ── Case-study imagery → /public/showcase/ ──────────────────────────────────
-interface CaseStudy {
-  id: string;
-  code: string;
-  output: string;
-  titleRo: string;
-  titleEn: string;
-  before: string;
-  after: string;
-  meta: { label: string; value: string }[];
-  summaryRo: string;
-  summaryEn: string;
-  listTitleRo: string;
-  listTitleEn: string;
-  materials: { nameRo: string; nameEn: string; qty: string; std: string }[];
-}
-
-const CASES: CaseStudy[] = [
-  {
-    id: 'apartment',
-    code: 'CASE 01',
-    output: 'BOM · 41s',
-    titleRo: 'Apartament din blocuri de beton anii ’80 → open-space Japandi cald',
-    titleEn: '1980s concrete-block apartment → warm Japandi open-concept',
-    before: '/showcase/room-before.jpg',
-    after: '/showcase/room-after.jpg',
-    meta: [
-      { label: 'Scope', value: '68.4 m²' },
-      { label: 'Net wall', value: '142 m²' },
-      { label: 'Budget', value: 'Standard' },
-    ],
-    summaryRo: 'Demolarea pereților nestructurali și compartimentarea deschisă sunt calculate o singură dată; fiecare finisaj preia cotele nete, cu pierderi de tăiere incluse.',
-    summaryEn: 'Non-structural demolition and the open layout are computed once; every finish inherits the net dimensions, cutting waste included.',
-    listTitleRo: 'Materiale calculate (extras)',
-    listTitleEn: 'Calculated materials (excerpt)',
-    materials: [
-      { nameRo: 'Parchet triplustratificat din stejar', nameEn: 'Engineered oak parquet', qty: '75.2 m²', std: 'EN 13489' },
-      { nameRo: 'Lamele acustice din fetru', nameEn: 'Acoustic felt slats', qty: '18.0 m²', std: 'EN ISO 354' },
-      { nameRo: 'Șină magnetică 48V', nameEn: '48V magnetic track', qty: '14.0 ml', std: 'EN 60598' },
-    ],
-  },
-  {
-    id: 'villa',
-    code: 'CASE 02',
-    output: 'BOM · 44s',
-    titleRo: 'Fațadă de vilă monolit contemporană',
-    titleEn: 'Contemporary monolith villa facade',
-    before: '/showcase/villa-before.jpg',
-    after: '/showcase/villa-after.jpg',
-    meta: [
-      { label: 'Scope', value: '240 m² facade' },
-      { label: 'Envelope', value: 'Ventilated ceramic' },
-      { label: 'Fire class', value: 'Euroclass A1' },
-    ],
-    summaryRo: 'Fațadă ventilată din ceramică peste un înveliș termic incombustibil (Euroclass A1). Cantitățile de panouri, structură și izolație provin din același model de suprafață.',
-    summaryEn: 'Ventilated ceramic cladding over a non-combustible thermal envelope (Euroclass A1). Panel, substructure and insulation quantities come from the same surface model.',
-    listTitleRo: 'Sinteză inginerească',
-    listTitleEn: 'Engineering summary',
-    materials: [
-      { nameRo: 'Panouri ceramice pentru fațadă ventilată', nameEn: 'Ventilated ceramic panels', qty: '252 m²', std: 'EN 14411' },
-      { nameRo: 'Vată minerală bazaltică, clasa A1', nameEn: 'Mineral wool, Euroclass A1', qty: '252 m²', std: 'EN 13501-1' },
-      { nameRo: 'Substructură din aluminiu cu rupere termică', nameEn: 'Thermally-broken aluminium substructure', qty: '240 m²', std: 'EN 1999' },
-    ],
-  },
-];
-
-// ── Supplier ecosystem ──────────────────────────────────────────────────────
-// Deep-link URL templates: {q} is replaced with the encoded normative search term.
-// Verify each template against the live retailer site before launch; they change.
-const SAMPLE_QUERY = 'parchet triplustratificat stejar 14 mm';
-const SAMPLE_PARAMS = ['EN 13489', '14 mm', 'wear layer 3.5 mm', '+10% waste'];
-
-const SUPPLIERS = [
-  { name: 'Dedeman', roleRo: 'Materiale de construcții și finisaje', roleEn: 'Construction & finishing materials', url: 'https://www.dedeman.ro/ro/cautare?q={q}' },
-  { name: 'Hornbach', roleRo: 'Bricolaj, pardoseli, iluminat', roleEn: 'DIY, flooring, lighting', url: 'https://www.hornbach.ro/s/{q}' },
-  { name: 'Leroy Merlin', roleRo: 'Finisaje, sanitare, electrice', roleEn: 'Finishes, plumbing, electrical', url: 'https://www.leroymerlin.ro/search/{q}' },
-  { name: 'Mathaus', roleRo: 'Structură, termoizolație, fațade', roleEn: 'Structure, insulation, facades', url: 'https://www.mathaus.ro/catalogsearch/result/?q={q}' },
-];
-
-const LOOP_STEPS = [
-  {
-    ro: 'SUCVAR generează termenul de căutare normativ și parametrii tehnici exacți.',
-    en: 'SUCVAR generates the normative search term and exact technical parameters.',
-  },
-  {
-    ro: 'Fiecare linie din deviz primește un deep-link direct către magazinul ales.',
-    en: 'Each bill-of-materials line gets a direct deep-link to the retailer you choose.',
-  },
-  {
-    ro: 'Exporți devizul ca CSV direct în sistemul de cerere de ofertă al antreprenorului.',
-    en: 'Export the bill as CSV straight into the contractor’s RFQ system.',
-  },
-];
-
-// ── Process ─────────────────────────────────────────────────────────────────
-const STEPS = [
-  {
-    number: '01',
-    icon: Ruler,
-    titleRo: 'Cotele',
-    titleEn: 'Dimensions',
-    descRo: 'Introduci lățimea, lungimea, înălțimea și numărul de uși și ferestre.',
-    descEn: 'Enter width, length, height and the number of doors and windows.',
-    meta: '±4 mm · W × L × H',
-  },
-  {
-    number: '02',
-    icon: Cpu,
-    titleRo: 'Proiectul',
-    titleEn: 'Design',
-    descRo: 'Încarci fotografia spațiului. Structura rămâne intactă, stilul se schimbă.',
-    descEn: 'Upload a photo of the space. Structure stays intact, only the style changes.',
-    meta: 'IMG → RENDER',
-  },
-  {
-    number: '03',
-    icon: FileCheck2,
-    titleRo: 'Specificația',
-    titleEn: 'Specification',
-    descRo: 'Primești devizul, cantitățile exacte și link-uri către produse.',
-    descEn: 'Get the bill of materials, exact quantities and product links.',
-    meta: 'BOM · CSV · PDF',
-  },
-];
-
-const NORMS = [
-  'SR EN 1991-1-1', 'SR EN ISO 6946', 'C107/2005', 'P118/1999', 'SR EN 13501-1',
-  'SR EN 12467', 'SR EN 14041', 'I7/2011', 'ISO 19650', 'SR EN 13986',
-];
-
-const FORMULAS = [
-  { labelRo: 'Arie netă pereți', labelEn: 'Net wall area', formula: 'P × H − (uși × 1.89 + ferestre × 2.10) m²' },
-  { labelRo: 'Pardoseală (parchet / gresie)', labelEn: 'Flooring (parquet / tiles)', formula: 'L × l × 1.10  (+10%)' },
-  { labelRo: 'Vopsea lavabilă', labelEn: 'Wall paint', formula: 'arie netă × 2 straturi ÷ 10 m²/L × 1.10' },
-  { labelRo: 'Plintă', labelEn: 'Baseboard', formula: '(P − uși × 0.90) × 1.05  ml' },
-  { labelRo: 'Gips-carton (tavan)', labelEn: 'Plasterboard (ceiling)', formula: 'L × l × 1.10 ÷ 3.0 m²/placă' },
-  { labelRo: 'Flux luminos necesar', labelEn: 'Required luminous flux', formula: 'E(lx) × A ÷ (0.6 × 0.9)  lm' },
-  { labelRo: 'Manoperă', labelEn: 'Labor', formula: 'Σ (cantitate × tarif) · tarif după buget' },
-];
-
-// ── Case card (Lovable CaseCard: framed image crossfade + hairline meta + tags) ──
-function CaseCard({ c, lang, isDark }: { c: CaseStudy; lang: Language; isDark: boolean }) {
-  const sk = getSkin(isDark);
-  const t = (ro: string, en: string) => (lang === 'ro' ? ro : en);
-  const [showAfter, setShowAfter] = useState(true);
-  const beforeLabel = t('Înainte', 'Before');
-  const afterLabel = t('După', 'After');
-  const title = t(c.titleRo, c.titleEn);
-
-  return (
-    <article className="group flex flex-col">
-      <Frame isDark={isDark} label={c.code} meta={showAfter ? afterLabel : beforeLabel}>
-        <div className={`relative aspect-[16/10] overflow-hidden ${isDark ? 'bg-zinc-900' : 'bg-zinc-200'}`}>
-          {[c.before, c.after].map((src, i) => (
-            <Image
-              key={src}
-              src={src}
-              alt={`${title} — ${i === 0 ? beforeLabel : afterLabel}`}
-              fill
-              sizes="(min-width: 1024px) 560px, 100vw"
-              className={`object-cover transition-[opacity,transform] duration-[1200ms] ease-out group-hover:scale-[1.02] ${
-                (i === 1) === showAfter ? 'opacity-100' : 'opacity-0'
-              }`}
-            />
-          ))}
-          <div
-            role="group"
-            aria-label={t('Înainte / După', 'Before / After')}
-            className={`absolute right-3 top-3 z-10 flex rounded-sm border p-0.5 backdrop-blur-md ${EYEBROW} ${
-              isDark ? 'bg-zinc-950/60 border-white/[0.1]' : 'bg-white/70 border-black/[0.1]'
-            }`}
-          >
-            {[false, true].map((after) => (
-              <button
-                key={String(after)}
-                type="button"
-                aria-pressed={showAfter === after}
-                onClick={() => setShowAfter(after)}
-                className={`rounded-[1px] px-2.5 py-1 cursor-pointer touch-manipulation transition-colors duration-300 ${
-                  showAfter === after
-                    ? isDark
-                      ? 'bg-zinc-100 text-zinc-950'
-                      : 'bg-zinc-950 text-white'
-                    : isDark
-                      ? 'text-zinc-300 hover:text-white'
-                      : 'text-zinc-600 hover:text-zinc-950'
-                }`}
-              >
-                {after ? afterLabel : beforeLabel}
-              </button>
-            ))}
-          </div>
-        </div>
-      </Frame>
-
-      <div className="mt-8">
-        <h3 className={`text-xl sm:text-2xl font-medium tracking-tight ${sk.strong}`}>{title}</h3>
-        <p className={`mt-3 max-w-lg text-sm leading-relaxed ${sk.muted}`}>{t(c.summaryRo, c.summaryEn)}</p>
-      </div>
-
-      <dl className={`mt-8 grid grid-cols-3 gap-px border ${sk.line} ${sk.gap}`}>
-        {[...c.meta, { label: t('Rezultat', 'Output'), value: c.output }].slice(0, 3).map((m) => (
-          <div key={m.label} className={`px-4 py-3.5 ${sk.cell}`}>
-            <dt className={`${EYEBROW} ${sk.dim}`}>{m.label}</dt>
-            <dd className={`mt-1.5 font-mono text-[13px] tabular-nums ${sk.strong}`}>{m.value}</dd>
-          </div>
-        ))}
-      </dl>
-
-      {/* Calculated materials (kept from v4.0) */}
-      <div className={`mt-4 border ${sk.line} ${sk.card}`}>
-        <div className={`px-4 h-9 flex items-center justify-between border-b ${sk.line} ${EYEBROW} ${sk.dim}`}>
-          <span>{t(c.listTitleRo, c.listTitleEn)}</span>
-          <span className="tabular-nums">{c.output}</span>
-        </div>
-        <ul className={`divide-y ${sk.divide}`}>
-          {c.materials.map((m) => (
-            <li key={m.nameEn} className="px-4 py-3 flex items-start justify-between gap-4">
-              <div>
-                <p className={`text-sm ${sk.strong}`}>{t(m.nameRo, m.nameEn)}</p>
-                <p className={`mt-0.5 font-mono text-[10px] ${sk.dim}`}>{m.std}</p>
-              </div>
-              <span className={`font-mono text-xs tabular-nums whitespace-nowrap ${sk.accent}`}>{m.qty}</span>
-            </li>
-          ))}
-        </ul>
-      </div>
-
-      <ul className="mt-4 flex flex-wrap gap-1.5">
-        {c.materials.map((m) => (
-          <li key={m.std} className={`rounded-sm border px-2 py-1 font-mono text-[10.5px] ${sk.line} ${sk.muted}`}>
-            {m.std}
-          </li>
-        ))}
-      </ul>
-    </article>
-  );
-}
+import { HERO_STATS, CASES, SAMPLE_QUERY, SAMPLE_PARAMS, SUPPLIERS, LOOP_STEPS, STEPS, NORMS, FORMULAS } from '@/app/data/home';
+import CaseCard from '@/app/components/home/CaseCard';
+import Footer from '@/app/components/layout/Footer';
+import { getSkin, EYEBROW, CONTAINER, ruleClass } from '@/app/lib/theme/skin';
+import { LiveDot, Corners, Frame, SectionHeading } from '@/app/components/ui/Editorial';
+import { STORAGE_KEYS, writeStorage } from '@/app/lib/storage';
+import { usePrefs } from '@/app/lib/theme/usePrefs';
+import { useStoredValue } from '@/app/lib/useStoredValue';
 
 export default function HomePage() {
   // ---------- State ----------
-  const [lang, setLang] = useState<Language>('ro');
-  const [theme, setTheme] = useState<ThemeMode>('dark');
-  const [selectedPlan, setSelectedPlan] = useState<string>('pro');
-
-  useEffect(() => {
-    try {
-      const savedPlan = window.localStorage.getItem(SELECTED_PLAN_KEY);
-      if (savedPlan) setSelectedPlan(savedPlan);
-    } catch {
-      /* storage unavailable */
-    }
-  }, []);
+  const { lang, isDark } = usePrefs();
+  const selectedPlan = useStoredValue(STORAGE_KEYS.selectedPlan) || 'pro';
 
   // ---------- Helpers ----------
-  const isDark = theme === 'dark';
   const sk = getSkin(isDark);
   const t = (textRo: string, textEn: string) => (lang === 'ro' ? textRo : textEn);
   const rule = ruleClass(isDark);
@@ -302,20 +38,11 @@ export default function HomePage() {
   const btnBase = 'inline-flex items-center justify-center gap-2 h-11 px-6 rounded-sm text-[13px] font-medium transition-colors touch-manipulation';
 
   const handleSelectPlan = (planId: string) => {
-    setSelectedPlan(planId);
-    try {
-      window.localStorage.setItem(SELECTED_PLAN_KEY, planId);
-    } catch {
-      /* ignore */
-    }
+    writeStorage(STORAGE_KEYS.selectedPlan, planId);
   };
 
   const handleStyleClick = (styleId: string) => {
-    try {
-      window.localStorage.setItem(PREFERRED_STYLE_KEY, styleId);
-    } catch {
-      /* ignore */
-    }
+    writeStorage(STORAGE_KEYS.preferredStyle, styleId);
   };
 
   const radioClass = (isSelected: boolean): string => {
@@ -330,7 +57,7 @@ export default function HomePage() {
 
   return (
     <div id="top" className={`min-h-screen font-sans pb-24 md:pb-0 transition-colors duration-500 ${sk.page}`}>
-      <Navbar lang={lang} setLang={setLang} theme={theme} setTheme={setTheme} />
+      <Navbar />
 
       <main>
         {/* ================= HERO ================= */}
@@ -757,25 +484,7 @@ export default function HomePage() {
         </section>
       </main>
 
-      {/* ================= FOOTER ================= */}
-      <footer className={`border-t pb-10 pt-16 ${sk.line}`}>
-        <div className={`${CONTAINER} flex flex-col gap-6 md:flex-row md:items-center md:justify-between`}>
-          <div className="flex items-center gap-4">
-            <SucvarLogo size={24} withWordmark isDark={isDark} />
-            <span className={`text-xs ${sk.dim}`}>{t('Sisteme Spațiale & Inginerești', 'Spatial & Engineering Systems')}</span>
-          </div>
-          <div className={`flex flex-wrap items-center gap-x-6 gap-y-2 ${EYEBROW} ${sk.muted}`}>
-            <LiveDot label={t('Toate sistemele funcționale', 'All systems operational')} className={sk.strong} />
-            <span className="tabular-nums">
-              {t('Latență API', 'API latency')} {FOOTER_LATENCY_MS} ms
-            </span>
-            <span className="tabular-nums">
-              {t('Disponibilitate 90z', 'Uptime 90d')} {FOOTER_UPTIME}
-            </span>
-            <span className={`tabular-nums ${sk.dim}`}>© {COPYRIGHT_YEAR} SUCVAR · Suchevan Denys</span>
-          </div>
-        </div>
-      </footer>
+      <Footer lang={lang} isDark={isDark} />
     </div>
   );
 }

@@ -5,8 +5,8 @@
 // Securitate: utilizatorul (id + email) este luat din token-ul Supabase, NU din body.
 // Altfel oricine ar putea declanșa plăți pe numele altui cont.
 import { NextResponse } from 'next/server';
-import { getAdmin } from '@/app/lib/quota';
-import { PAID_PLANS, PLAN_CURRENCY, getStripe, isPaidPlan } from '@/app/lib/stripe';
+import { getAdmin } from '@/app/lib/supabase/admin';
+import { PAID_PLANS, PLAN_CURRENCY, getStripe, isPaidPlan } from '@/app/lib/billing/stripe';
 
 function fail(status: number, code: string, error: string) {
   return NextResponse.json({ error, code }, { status });

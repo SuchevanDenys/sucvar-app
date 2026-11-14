@@ -6,7 +6,7 @@
 //   2. altfel, automat: dacă există SD_API_URL -> Stable Diffusion,
 //      dacă există REPLICATE_API_TOKEN -> Replicate, altfel demo.
 // Dacă furnizorul ales explicit nu este configurat, se folosește demo și se întoarce un avertisment.
-import { AiProviderId, DesignMode } from '@/app/types/studio';
+import { AiProviderId, DesignMode } from '@/app/types';
 import { createDemoProvider } from './demo';
 import { replicateProvider } from './replicate';
 import { stableDiffusionProvider } from './stable-diffusion';

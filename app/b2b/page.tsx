@@ -1,221 +1,52 @@
 // app/b2b/page.tsx — v4.2 Enterprise contractor workspace.
 //   • Gate: unauthenticated / starter / pro → "Enterprise Restricted Module".
 //     `agency` (profiles.subscription_tier) or an admin email → full dashboard.
-//   • v4.2: access is resolved from resolvePlan() (reads the DB tier directly), so 'agency'
-//     unlocks the page even if usePlan() collapses it to 'pro'. Admins: NEXT_PUBLIC_ADMIN_EMAILS.
+//   • Access: useEnterpriseAccess() — 'agency' is a distinct tier; admins: NEXT_PUBLIC_ADMIN_EMAILS.
+//   • Domain data + pure helpers live in app/lib/b2b/estimate.ts.
 //   • Labor matrix (4 trades × regional hourly rates), crew scheduling, contingency + margin sliders.
 //   • Itemised lines (templates from v3), CSV export, Factur-X (CII / EN 16931) XML export, print/PDF.
-// SSR safety: no Date / Math.random during render. Dates are set in effects or click handlers.
+// SSR safety: no Date / Math.random during render (useClientDate for the print header).
 "use client";
 
 import React, { useEffect, useMemo, useState } from 'react';
-import Link from 'next/link';
 import {
-  ArrowRight,
-  CalendarRange,
-  Calculator,
   FileCode,
   FileSpreadsheet,
-  FileText,
-  Lock,
-  Percent,
   Plus,
   Printer,
   RotateCcw,
   Trash2,
 } from 'lucide-react';
-import Navbar from '@/app/components/Navbar';
-import SucvarLogo from '@/app/components/SucvarLogo';
-import { usePlan } from '@/app/lib/usePlan';
-import { PLAN_EVENT, isAdminEmail, resolvePlan } from '@/app/lib/plan';
-import { getSessionEmail } from '@/app/lib/supabase';
-import { getSkin, EYEBROW, LiveDot, Corners } from '@/app/lib/skin';
-import { Language, ThemeMode } from '@/app/types/studio';
-
-// ═════════════════════════════════════════════════════════════════════════════
-// Access control
-// ═════════════════════════════════════════════════════════════════════════════
-
-/** Shape we read from usePlan(). Everything beyond isLoading is optional on purpose,
- *  so this compiles whichever fields your hook exposes. */
-interface PlanShape {
-  isLoading: boolean;
-  isSignedIn?: boolean;
-  isPro?: boolean;
-  isAgency?: boolean;
-  isBusiness?: boolean;
-  plan?: unknown;
-  planId?: unknown;
-  tier?: unknown;
-}
-
-/** Accepts a string, or an object carrying `tier` / `plan` / `planId`. */
-const asPlanId = (v: unknown): string => {
-  if (typeof v === 'string') return v.trim().toLowerCase();
-  if (v && typeof v === 'object') {
-    const o = v as { tier?: unknown; plan?: unknown; planId?: unknown };
-    return asPlanId(o.tier) || asPlanId(o.plan) || asPlanId(o.planId);
-  }
-  return '';
-};
-
-const isAgencyId = (id: string) => id === 'agency' || id === 'enterprise' || id === 'business';
-
-/** Resolves whether the current session may use the Enterprise workspace.
- *  The DB tier (via resolvePlan) is authoritative: it is looked up whenever the hook
- *  does not already say 'agency'. Secure default: anything unknown is NOT enterprise. */
-function useEnterpriseAccess() {
-  const p = usePlan() as unknown as PlanShape;
-  const declared = asPlanId(p.tier) || asPlanId(p.plan) || asPlanId(p.planId);
-  const hookSaysAgency = p.isAgency === true || p.isBusiness === true || isAgencyId(declared);
-
-  const [resolved, setResolved] = useState<{ id: string; email: string | null } | null>(null);
-  const [tick, setTick] = useState(0);
-
-  // Re-check when the plan changes elsewhere (checkout, webhook refresh, sign-in/out)
-  useEffect(() => {
-    const bump = () => setTick((n) => n + 1);
-    window.addEventListener(PLAN_EVENT, bump);
-    return () => window.removeEventListener(PLAN_EVENT, bump);
-  }, []);
-
-  useEffect(() => {
-    if (p.isLoading || !p.isSignedIn || hookSaysAgency) return;
-    let alive = true;
-    resolvePlan()
-      .then((r) => alive && setResolved({ id: asPlanId(r.tier), email: r.email }))
-      .catch(() => alive && setResolved({ id: '', email: null }));
-    return () => {
-      alive = false;
-    };
-  }, [p.isLoading, p.isSignedIn, hookSaysAgency, tick]);
-
-  const needsLookup = !!p.isSignedIn && !hookSaysAgency && resolved === null;
-  const resolvedAgency = resolved !== null && isAgencyId(resolved.id);
-  const isAdmin = !!p.isSignedIn && isAdminEmail(resolved?.email);
-  const isEnterprise = hookSaysAgency || resolvedAgency || isAdmin;
-  const planId = isEnterprise
-    ? 'agency'
-    : resolved?.id || declared || (p.isPro ? 'pro' : 'starter');
-
-  return {
-    isChecking: p.isLoading || needsLookup,
-    isSignedIn: !!p.isSignedIn,
-    planId,
-    isEnterprise,
-  };
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// Domain data
-// ═════════════════════════════════════════════════════════════════════════════
-
-type TradeId = 'finishes' | 'electrical' | 'drywall' | 'plumbing';
-type RegionId = 'bucharest' | 'west' | 'center' | 'southeast';
-
-const TRADES: { id: TradeId; ro: string; en: string; hoursPerM2: number }[] = [
-  { id: 'finishes', ro: 'Finisaje', en: 'Finishes', hoursPerM2: 1.2 },
-  { id: 'electrical', ro: 'Electrice', en: 'Electrical', hoursPerM2: 0.6 },
-  { id: 'drywall', ro: 'Gips-carton', en: 'Drywall', hoursPerM2: 0.9 },
-  { id: 'plumbing', ro: 'Sanitare', en: 'Plumbing', hoursPerM2: 0.5 },
-];
-
-// Illustrative starting rates (€/h, excl. VAT). Every rate is editable in the UI,
-// so treat these as defaults to be replaced by your own price book.
-const REGIONS: { id: RegionId; ro: string; en: string; rates: Record<TradeId, number> }[] = [
-  { id: 'bucharest', ro: 'București – Ilfov', en: 'Bucharest – Ilfov', rates: { finishes: 9, electrical: 12, drywall: 8.5, plumbing: 11 } },
-  { id: 'west', ro: 'Vest (Cluj, Timișoara)', en: 'West (Cluj, Timișoara)', rates: { finishes: 8.5, electrical: 11, drywall: 8, plumbing: 10.5 } },
-  { id: 'center', ro: 'Centru / Nord (Brașov, Iași, Suceava)', en: 'Center / North (Brașov, Iași, Suceava)', rates: { finishes: 6.5, electrical: 8.5, drywall: 6, plumbing: 8 } },
-  { id: 'southeast', ro: 'Sud / Est', en: 'South / East', rates: { finishes: 6, electrical: 8, drywall: 5.5, plumbing: 7.5 } },
-];
-
-const FINISH_LEVELS = [
-  { id: 'standard', ro: 'Standard', en: 'Standard', k: 1 },
-  { id: 'premium', ro: 'Premium', en: 'Premium', k: 1.25 },
-  { id: 'bespoke', ro: 'La comandă', en: 'Bespoke', k: 1.5 },
-];
-
-interface Category { id: string; ro: string; en: string }
-const CATEGORIES: Category[] = [
-  { id: 'electric', ro: 'Instalații electrice', en: 'Electrical works' },
-  { id: 'sanitary', ro: 'Instalații sanitare', en: 'Plumbing works' },
-  { id: 'finishes', ro: 'Finisaje', en: 'Finishes' },
-  { id: 'structure', ro: 'Structură & gips-carton', en: 'Structure & drywall' },
-  { id: 'other', ro: 'Altele', en: 'Other' },
-];
-
-interface Template { cat: string; ro: string; en: string; unit: string; qty: number }
-const TEMPLATES: Template[] = [
-  { cat: 'electric', ro: 'Priză dublă 16A', en: 'Double socket 16A', unit: 'buc.', qty: 10 },
-  { cat: 'electric', ro: 'Întrerupător simplu 10A', en: 'Single switch 10A', unit: 'buc.', qty: 6 },
-  { cat: 'electric', ro: 'Cablu NYM-J 3×2.5 mm²', en: 'Cable NYM-J 3×2.5 mm²', unit: 'ml', qty: 80 },
-  { cat: 'electric', ro: 'Tablou electric echipat', en: 'Equipped consumer unit', unit: 'buc.', qty: 1 },
-  { cat: 'electric', ro: 'Spot LED încastrat 9W', en: 'Recessed LED spot 9W', unit: 'buc.', qty: 8 },
-  { cat: 'sanitary', ro: 'Punct apă rece/caldă', en: 'Water connection point', unit: 'punct', qty: 4 },
-  { cat: 'sanitary', ro: 'Țeavă PPR Ø20 mm', en: 'PPR pipe Ø20 mm', unit: 'ml', qty: 25 },
-  { cat: 'sanitary', ro: 'Vas WC suspendat + rezervor încastrat', en: 'Wall-hung WC + concealed cistern', unit: 'buc.', qty: 1 },
-  { cat: 'finishes', ro: 'Montaj parchet triplustratificat', en: 'Engineered parquet installation', unit: 'm²', qty: 20 },
-  { cat: 'finishes', ro: 'Vopsit pereți (2 straturi + grund)', en: 'Wall painting (2 coats + primer)', unit: 'm²', qty: 60 },
-  { cat: 'finishes', ro: 'Placare gresie / faianță', en: 'Floor/wall tiling', unit: 'm²', qty: 15 },
-  { cat: 'structure', ro: 'Tavan suspendat gips-carton', en: 'Suspended GK ceiling', unit: 'm²', qty: 20 },
-  { cat: 'structure', ro: 'Perete gips-carton simplu', en: 'Single-layer GK partition', unit: 'm²', qty: 12 },
-  { cat: 'structure', ro: 'Șapă autonivelantă 40 mm', en: 'Self-levelling screed 40 mm', unit: 'm²', qty: 20 },
-];
-
-interface LineItem {
-  id: string;
-  cat: string;
-  ro: string;
-  en: string;
-  unit: string;
-  qty: number;
-  price: number;
-}
-
-// ═════════════════════════════════════════════════════════════════════════════
-// Helpers
-// ═════════════════════════════════════════════════════════════════════════════
-
-const round2 = (n: number) => Math.round((n + Number.EPSILON) * 100) / 100;
-/** Deterministic money format (no Intl → identical on server and client). */
-const eur = (n: number) => {
-  const [i, d] = round2(n).toFixed(2).split('.');
-  return `${i.replace(/\B(?=(\d{3})+(?!\d))/g, ' ')},${d} €`;
-};
-const clampNum = (v: string, min = 0, max = Number.MAX_SAFE_INTEGER) => {
-  const n = Number(v);
-  return Number.isFinite(n) ? Math.min(max, Math.max(min, n)) : min;
-};
-const xmlEsc = (s: string) =>
-  s.replace(/&/g, '&amp;').replace(/</g, '&lt;').replace(/>/g, '&gt;').replace(/"/g, '&quot;').replace(/'/g, '&apos;');
-const unitCode = (u: string) => (u === 'm²' ? 'MTK' : u === 'ml' ? 'MTR' : u === 'h' ? 'HUR' : 'C62');
-
-let uidCounter = 0; // only called from event handlers, never during render
-const uid = () => `l${Date.now().toString(36)}${(uidCounter++).toString(36)}`;
-
-function download(filename: string, content: string, mime: string, bom = false) {
-  const blob = new Blob([bom ? '\uFEFF' + content : content], { type: `${mime};charset=utf-8` });
-  const url = URL.createObjectURL(blob);
-  const a = document.createElement('a');
-  a.href = url;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  a.remove();
-  URL.revokeObjectURL(url);
-}
-
-interface InvoiceLine { name: string; unit: string; qty: number; unitPrice: number; total: number }
-
-// ═════════════════════════════════════════════════════════════════════════════
-// Page
-// ═════════════════════════════════════════════════════════════════════════════
+import Navbar from '@/app/components/layout/Navbar';
+import { useEnterpriseAccess } from '@/app/lib/plan/useEnterpriseAccess';
+import { usePrefs } from '@/app/lib/theme/usePrefs';
+import { useClientDate } from '@/app/lib/useStoredValue';
+import {
+  TRADES,
+  REGIONS,
+  FINISH_LEVELS,
+  CATEGORIES,
+  TEMPLATES,
+  round2,
+  eur,
+  clampNum,
+  uid,
+  download,
+  type TradeId,
+  type RegionId,
+  type Template,
+  type LineItem,
+  type InvoiceLine,
+} from '@/app/lib/b2b/estimate';
+import EnterpriseGate from '@/app/components/b2b/EnterpriseGate';
+import PrintDeviz from '@/app/components/b2b/PrintDeviz';
+import { buildCsv, buildFacturX } from '@/app/lib/b2b/exports';
+import { getSessionEmail } from '@/app/lib/supabase/auth';
+import { getSkin, EYEBROW } from '@/app/lib/theme/skin';
+import { LiveDot, Corners } from '@/app/components/ui/Editorial';
 
 export default function B2BPage() {
-  const [lang, setLang] = useState<Language>('ro');
-  const [theme, setTheme] = useState<ThemeMode>('dark');
-  const isDark = theme === 'dark';
-  const isRo = lang === 'ro';
+  const { isDark, isRo } = usePrefs();
   const sk = getSkin(isDark);
   const t = (ro: string, en: string) => (isRo ? ro : en);
   const eyebrow = `${EYEBROW} ${sk.dim}`;
@@ -238,15 +69,13 @@ export default function B2BPage() {
   const [seller, setSeller] = useState({ name: '', vatId: '' });
   const [buyer, setBuyer] = useState({ name: '', vatId: '' });
   const [invoiceNo, setInvoiceNo] = useState('');
-  const [printDate, setPrintDate] = useState('');
+  const printDate = useClientDate(); // client-only date for the printed header
 
   useEffect(() => {
     let alive = true;
     getSessionEmail()
       .then((e) => alive && setEmail(e ?? null))
       .catch(() => undefined);
-    // Client-only date for the printed header (keeps SSR output date-free)
-    setPrintDate(new Date().toISOString().slice(0, 10));
     return () => {
       alive = false;
     };
@@ -315,80 +144,12 @@ export default function B2BPage() {
   };
 
   const exportCsv = () => {
-    const lines = buildInvoiceLines();
-    const q = (s: string) => `"${s.replace(/"/g, '""')}"`;
-    const rows = [
-      ['No', 'Description', 'UM', 'Qty', 'Unit price (EUR, excl. VAT)', 'Total (EUR, excl. VAT)'].map(q).join(';'),
-      ...lines.map((l, i) => [i + 1, q(l.name), q(l.unit), l.qty, l.unitPrice.toFixed(2), l.total.toFixed(2)].join(';')),
-      '',
-      [q('Net total'), '', '', '', '', net.toFixed(2)].join(';'),
-      [q(`VAT ${vat}%`), '', '', '', '', vatAmt.toFixed(2)].join(';'),
-      [q('Gross total'), '', '', '', '', gross.toFixed(2)].join(';'),
-    ];
-    download(`sucvar-deviz-${(projectName || 'project').replace(/\s+/g, '-').toLowerCase()}.csv`, rows.join('\r\n'), 'text/csv', true);
+    const name = `sucvar-deviz-${(projectName || 'project').replace(/\s+/g, '-').toLowerCase()}.csv`;
+    download(name, buildCsv({ lines: buildInvoiceLines(), net, vat, vatAmt, gross }), 'text/csv', true);
   };
 
   const exportFacturX = () => {
-    const lines = buildInvoiceLines();
-    const lineSum = round2(lines.reduce((s, l) => s + l.total, 0));
-    const tax = round2(lineSum * (vat / 100));
-    const total = round2(lineSum + tax);
-    const issue = new Date().toISOString().slice(0, 10).replace(/-/g, ''); // click handler → client only
-    const party = (tag: string, p: { name: string; vatId: string }) => `
-      <ram:${tag}>
-        <ram:Name>${xmlEsc(p.name || 'N/A')}</ram:Name>
-        <ram:PostalTradeAddress><ram:CountryID>RO</ram:CountryID></ram:PostalTradeAddress>${
-          p.vatId ? `\n        <ram:SpecifiedTaxRegistration><ram:ID schemeID="VA">${xmlEsc(p.vatId)}</ram:ID></ram:SpecifiedTaxRegistration>` : ''
-        }
-      </ram:${tag}>`;
-    const lineXml = lines
-      .map(
-        (l, i) => `
-    <ram:IncludedSupplyChainTradeLineItem>
-      <ram:AssociatedDocumentLineDocument><ram:LineID>${i + 1}</ram:LineID></ram:AssociatedDocumentLineDocument>
-      <ram:SpecifiedTradeProduct><ram:Name>${xmlEsc(l.name)}</ram:Name></ram:SpecifiedTradeProduct>
-      <ram:SpecifiedLineTradeAgreement><ram:NetPriceProductTradePrice><ram:ChargeAmount>${l.unitPrice.toFixed(2)}</ram:ChargeAmount></ram:NetPriceProductTradePrice></ram:SpecifiedLineTradeAgreement>
-      <ram:SpecifiedLineTradeDelivery><ram:BilledQuantity unitCode="${unitCode(l.unit)}">${l.qty}</ram:BilledQuantity></ram:SpecifiedLineTradeDelivery>
-      <ram:SpecifiedLineTradeSettlement>
-        <ram:ApplicableTradeTax><ram:TypeCode>VAT</ram:TypeCode><ram:CategoryCode>S</ram:CategoryCode><ram:RateApplicablePercent>${vat.toFixed(2)}</ram:RateApplicablePercent></ram:ApplicableTradeTax>
-        <ram:SpecifiedTradeSettlementLineMonetarySummation><ram:LineTotalAmount>${l.total.toFixed(2)}</ram:LineTotalAmount></ram:SpecifiedTradeSettlementLineMonetarySummation>
-      </ram:SpecifiedLineTradeSettlement>
-    </ram:IncludedSupplyChainTradeLineItem>`,
-      )
-      .join('');
-
-    const xml = `<?xml version="1.0" encoding="UTF-8"?>
-<rsm:CrossIndustryInvoice xmlns:rsm="urn:un:unece:uncefact:data:standard:CrossIndustryInvoice:100" xmlns:ram="urn:un:unece:uncefact:data:standard:ReusableAggregateBusinessInformationEntity:100" xmlns:udt="urn:un:unece:uncefact:data:standard:UnqualifiedDataType:100">
-  <rsm:ExchangedDocumentContext>
-    <ram:GuidelineSpecifiedDocumentContextParameter><ram:ID>urn:cen.eu:en16931:2017</ram:ID></ram:GuidelineSpecifiedDocumentContextParameter>
-  </rsm:ExchangedDocumentContext>
-  <rsm:ExchangedDocument>
-    <ram:ID>${xmlEsc(invoiceNo || 'DRAFT')}</ram:ID>
-    <ram:TypeCode>380</ram:TypeCode>
-    <ram:IssueDateTime><udt:DateTimeString format="102">${issue}</udt:DateTimeString></ram:IssueDateTime>
-  </rsm:ExchangedDocument>
-  <rsm:SupplyChainTradeTransaction>${lineXml}
-    <ram:ApplicableHeaderTradeAgreement>${party('SellerTradeParty', seller)}${party('BuyerTradeParty', buyer)}
-    </ram:ApplicableHeaderTradeAgreement>
-    <ram:ApplicableHeaderTradeDelivery/>
-    <ram:ApplicableHeaderTradeSettlement>
-      <ram:InvoiceCurrencyCode>EUR</ram:InvoiceCurrencyCode>
-      <ram:ApplicableTradeTax>
-        <ram:CalculatedAmount>${tax.toFixed(2)}</ram:CalculatedAmount><ram:TypeCode>VAT</ram:TypeCode>
-        <ram:BasisAmount>${lineSum.toFixed(2)}</ram:BasisAmount><ram:CategoryCode>S</ram:CategoryCode>
-        <ram:RateApplicablePercent>${vat.toFixed(2)}</ram:RateApplicablePercent>
-      </ram:ApplicableTradeTax>
-      <ram:SpecifiedTradeSettlementHeaderMonetarySummation>
-        <ram:LineTotalAmount>${lineSum.toFixed(2)}</ram:LineTotalAmount>
-        <ram:TaxBasisTotalAmount>${lineSum.toFixed(2)}</ram:TaxBasisTotalAmount>
-        <ram:TaxTotalAmount currencyID="EUR">${tax.toFixed(2)}</ram:TaxTotalAmount>
-        <ram:GrandTotalAmount>${total.toFixed(2)}</ram:GrandTotalAmount>
-        <ram:DuePayableAmount>${total.toFixed(2)}</ram:DuePayableAmount>
-      </ram:SpecifiedTradeSettlementHeaderMonetarySummation>
-    </ram:ApplicableHeaderTradeSettlement>
-  </rsm:SupplyChainTradeTransaction>
-</rsm:CrossIndustryInvoice>
-`;
+    const xml = buildFacturX({ lines: buildInvoiceLines(), vat, invoiceNo, seller, buyer });
     download(`factur-x-${(invoiceNo || 'draft').replace(/\s+/g, '-')}.xml`, xml, 'application/xml');
   };
 
@@ -406,7 +167,7 @@ export default function B2BPage() {
   if (access.isChecking) {
     return (
       <div className={`min-h-screen font-sans pb-28 ${sk.page}`}>
-        <Navbar lang={lang} setLang={setLang} theme={theme} setTheme={setTheme} />
+        <Navbar />
         <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-16">
           <div className={`h-80 border rounded-sm animate-pulse ${sk.card}`} aria-busy="true" />
         </div>
@@ -418,90 +179,7 @@ export default function B2BPage() {
   // Gate: Enterprise Restricted Module
   // ═══════════════════════════════════════════════════════════════════════
   if (!access.isEnterprise) {
-    const features = [
-      { icon: Calculator, ro: 'Matrici de cost manoperă', en: 'Labor cost matrices', dRo: 'Finisaje, electrice, gips-carton și sanitare, cu tarife orare regionale.', dEn: 'Finishes, electrical, drywall and plumbing with regional hourly rates.' },
-      { icon: CalendarRange, ro: 'Planificare echipe', en: 'Team scheduling', dRo: 'Durata în zile lucrătoare, în funcție de mărimea echipei.', dEn: 'Duration in working days based on crew size.' },
-      { icon: Percent, ro: 'Marje și contingență', en: 'Contractor margins', dRo: 'Marjă de profit 10–25% și rezervă de risc, aplicate pe fiecare linie.', dEn: '10–25% profit margin and risk contingency, applied to every line.' },
-      { icon: FileText, ro: 'Export Factur-X', en: 'Factur-X export', dRo: 'Deviz în CSV și XML Factur-X (EN 16931), gata pentru facturare.', dEn: 'Deviz as CSV and Factur-X XML (EN 16931), ready for invoicing.' },
-    ];
-    const ctaHref = access.isSignedIn ? '/checkout?plan=agency' : '/login';
-    return (
-      <div className={`min-h-screen font-sans pb-28 transition-colors ${sk.page}`}>
-        <Navbar lang={lang} setLang={setLang} theme={theme} setTheme={setTheme} />
-        <div className="relative">
-          <div className={`pointer-events-none absolute inset-0 ${sk.grid} [mask-image:radial-gradient(ellipse_at_50%_0%,black,transparent_70%)]`} />
-          <div className="relative max-w-4xl mx-auto px-4 sm:px-6 pt-16">
-            <div className={`${panel}`}>
-              <Corners isDark={isDark} />
-              <div className={panelHead}>
-                <span>b2b.enterprise // restricted</span>
-                <LiveDot label={t('Modul blocat', 'Module locked')} active={false} className={sk.dim} />
-              </div>
-
-              <div className="p-6 sm:p-10 space-y-8">
-                <div className="space-y-4 max-w-xl">
-                  <span className={`inline-flex h-10 w-10 items-center justify-center rounded-sm border ${sk.line} ${sk.accent}`}>
-                    <Lock className="w-4 h-4" />
-                  </span>
-                  <h1 className={`text-3xl font-semibold tracking-tight ${sk.strong}`}>
-                    {t('Modul restricționat Enterprise', 'Enterprise restricted module')}
-                  </h1>
-                  <p className={`text-sm leading-relaxed ${sk.muted}`}>
-                    {t(
-                      'Spațiul de lucru pentru antreprenori este inclus doar în planul Enterprise B2B.',
-                      'The contractor workspace is included only in the Enterprise B2B plan.',
-                    )}
-                  </p>
-                </div>
-
-                {/* Telemetry */}
-                <dl className={`grid grid-cols-1 sm:grid-cols-3 gap-px border rounded-sm overflow-hidden ${sk.line} ${sk.gap}`}>
-                  {[
-                    { k: t('Sesiune', 'Session'), v: access.isSignedIn ? t('Autentificat', 'Authenticated') : t('Neautentificat', 'Not signed in') },
-                    { k: t('Plan curent', 'Current plan'), v: access.isSignedIn ? access.planId : '—' },
-                    { k: t('Plan necesar', 'Required plan'), v: 'agency (enterprise)' },
-                  ].map((r) => (
-                    <div key={r.k} className={`p-4 ${sk.cell}`}>
-                      <dt className={eyebrow}>{r.k}</dt>
-                      <dd className={`mt-1.5 font-mono text-sm ${sk.strong}`}>{r.v}</dd>
-                    </div>
-                  ))}
-                </dl>
-
-                {/* Feature breakdown */}
-                <div className={`grid grid-cols-1 sm:grid-cols-2 gap-px border rounded-sm overflow-hidden ${sk.line} ${sk.gap}`}>
-                  {features.map((f) => (
-                    <div key={f.en} className={`p-5 flex gap-4 ${sk.cell}`}>
-                      <f.icon className={`w-4 h-4 mt-0.5 shrink-0 ${sk.accent}`} />
-                      <div>
-                        <p className={`text-sm font-medium tracking-tight ${sk.strong}`}>{t(f.ro, f.en)}</p>
-                        <p className={`mt-1 text-xs leading-relaxed ${sk.dim}`}>{t(f.dRo, f.dEn)}</p>
-                      </div>
-                    </div>
-                  ))}
-                </div>
-
-                <div className="flex flex-wrap items-center gap-2">
-                  <Link
-                    href={ctaHref}
-                    className={`inline-flex items-center gap-2 h-10 px-5 rounded-sm ${EYEBROW} font-semibold transition-colors touch-manipulation ${sk.btn}`}
-                  >
-                    {access.isSignedIn ? t('Upgrade la Enterprise B2B', 'Upgrade to Enterprise B2B') : t('Autentifică-te pentru upgrade', 'Sign in to upgrade')}
-                    <ArrowRight className="w-3.5 h-3.5" />
-                  </Link>
-                  <Link
-                    href="/#pricing"
-                    className={`inline-flex items-center h-10 px-5 rounded-sm ${EYEBROW} transition-colors touch-manipulation ${sk.btnGhost}`}
-                  >
-                    {t('Compară planurile', 'Compare plans')}
-                  </Link>
-                </div>
-              </div>
-            </div>
-          </div>
-        </div>
-      </div>
-    );
+    return <EnterpriseGate isSignedIn={access.isSignedIn} planId={access.planId} />;
   }
 
   // ═══════════════════════════════════════════════════════════════════════
@@ -509,7 +187,7 @@ export default function B2BPage() {
   // ═══════════════════════════════════════════════════════════════════════
   return (
     <div className={`min-h-screen font-sans pb-28 transition-colors print:bg-white print:text-black print:pb-0 ${sk.page}`}>
-      <Navbar lang={lang} setLang={setLang} theme={theme} setTheme={setTheme} />
+      <Navbar />
 
       <div className="print:hidden max-w-7xl mx-auto px-4 sm:px-6 pt-10 space-y-8">
         {/* Header */}
@@ -772,56 +450,16 @@ export default function B2BPage() {
       </div>
 
       {/* ══ PRINT ONLY ═══════════════════════════════════════════════════ */}
-      <section className="hidden print:block bg-white text-[#1A1A1A] p-10">
-        <header className="flex items-center justify-between border-b border-stone-300 pb-5">
-          <SucvarLogo size={36} withWordmark />
-          <div className="text-right">
-            <p className="text-sm font-semibold uppercase tracking-[0.2em]">SUCVAR · Deviz tehnic B2B</p>
-            {projectName && <p className="text-xs font-semibold mt-0.5">{projectName}</p>}
-            {printDate && <p className="text-xs mt-0.5">{printDate}</p>}
-          </div>
-        </header>
-
-        <table className="w-full text-xs border border-stone-300 mt-6">
-          <thead>
-            <tr className="bg-stone-100 text-left">
-              <th className="p-2 w-1/2">{t('Descriere', 'Description')}</th>
-              <th className="p-2">U.M.</th>
-              <th className="p-2 text-right">{t('Cant.', 'Qty')}</th>
-              <th className="p-2 text-right">{t('Preț unitar', 'Unit price')}</th>
-              <th className="p-2 text-right">Total</th>
-            </tr>
-          </thead>
-          <tbody>
-            {buildInvoiceLines().map((l, i) => (
-              <tr key={`${l.name}-${i}`} className="border-b border-stone-200">
-                <td className="p-2">{l.name}</td>
-                <td className="p-2">{l.unit}</td>
-                <td className="p-2 font-mono text-right">{l.qty}</td>
-                <td className="p-2 font-mono text-right">{l.unitPrice.toFixed(2)}</td>
-                <td className="p-2 font-mono text-right">{l.total.toFixed(2)}</td>
-              </tr>
-            ))}
-            <tr className="font-semibold">
-              <td className="p-2" colSpan={4}>{t('Total fără TVA', 'Net total')}</td>
-              <td className="p-2 font-mono text-right">{net.toFixed(2)} €</td>
-            </tr>
-            <tr>
-              <td className="p-2" colSpan={4}>{t('TVA', 'VAT')} {vat}%</td>
-              <td className="p-2 font-mono text-right">{vatAmt.toFixed(2)} €</td>
-            </tr>
-            <tr className="font-semibold bg-stone-100">
-              <td className="p-2" colSpan={4}>{t('Total cu TVA', 'Gross total')}</td>
-              <td className="p-2 font-mono text-right">{gross.toFixed(2)} €</td>
-            </tr>
-          </tbody>
-        </table>
-
-        <footer className="mt-10 pt-5 border-t border-stone-300 text-xs flex justify-between">
-          <span>Deviz generat de SUCVAR · suchevandenys.com</span>
-          <span>Signed: Lead Systems Architect — Suchevan Denys</span>
-        </footer>
-      </section>
+      <PrintDeviz
+        isRo={isRo}
+        projectName={projectName}
+        printDate={printDate}
+        lines={buildInvoiceLines()}
+        net={net}
+        vat={vat}
+        vatAmt={vatAmt}
+        gross={gross}
+      />
     </div>
   );
 }

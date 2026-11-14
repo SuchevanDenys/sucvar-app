@@ -13,8 +13,8 @@ import {
   getSpace,
 } from '@/app/data/catalog';
 import { AI_LIMITS, DEFAULT_AI_SETTINGS } from '@/app/lib/ai/config';
-import { BudgetTier, DesignMode } from '@/app/types/studio';
-import { checkGenerationQuota, recordServerGeneration } from '@/app/lib/quota';
+import { BudgetTier, DesignMode } from '@/app/types';
+import { checkGenerationQuota, recordServerGeneration } from '@/app/lib/server/quota';
 
 // sharp needs the Node.js runtime (not Edge)
 export const maxDuration = 60;

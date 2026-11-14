@@ -2,7 +2,7 @@
 // Valori implicite, limite și validare pentru parametrii de generare AI.
 // Fișierul NU folosește nimic specific serverului, deci poate fi importat
 // și în pagina Studio (browser), și în ruta API (server).
-import { AiSettings } from '@/app/types/studio';
+import { AiSettings } from '@/app/types';
 
 // Ce NU vrem să apară în imagine (scoate defectele tipice ale modelelor de difuzie)
 export const DEFAULT_NEGATIVE_PROMPT =

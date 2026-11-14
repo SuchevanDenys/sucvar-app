@@ -4,40 +4,31 @@
 // /api/checkout cu token-ul sesiunii și redirecționează utilizatorul către Stripe.
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useState } from 'react';
 import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Check, ShieldCheck } from 'lucide-react';
-import Navbar from '@/app/components/Navbar';
+import Navbar from '@/app/components/layout/Navbar';
 import { PRICING_PLANS, PricingPlan, getPlanById } from '@/app/data/catalog';
-import { getAccessToken } from '@/app/lib/supabase';
-import { getUi } from '@/app/lib/theme';
-import { Language, ThemeMode } from '@/app/types/studio';
-
-// Aceeași cheie ca în pagina Home
-const SELECTED_PLAN_KEY = 'sucvar_selected_plan';
+import { getAccessToken } from '@/app/lib/supabase/auth';
+import { STORAGE_KEYS } from '@/app/lib/storage';
+import { getUi } from '@/app/lib/theme/tokens';
+import { usePrefs } from '@/app/lib/theme/usePrefs';
+import { useSearchString, useStoredValue } from '@/app/lib/useStoredValue';
 
 export default function CheckoutPage() {
-  const [lang, setLang] = useState<Language>('ro');
-  const [theme, setTheme] = useState<ThemeMode>('light');
-  const [plan, setPlan] = useState<PricingPlan>(PRICING_PLANS[1]);
+  const { lang, isDark } = usePrefs();
   const [isPaying, setIsPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
   const [needsLogin, setNeedsLogin] = useState(false);
-  const [wasCanceled, setWasCanceled] = useState(false);
 
-  // La încărcare: planul vine din adresă (?plan=pro); dacă lipsește, din planul salvat
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const planFromUrl = params.get('plan');
-    setWasCanceled(params.get('canceled') === '1');
-    const planFromStorage = window.localStorage.getItem(SELECTED_PLAN_KEY);
-    const resolvedPlan = getPlanById(planFromUrl) ?? getPlanById(planFromStorage);
-    if (resolvedPlan) {
-      setPlan(resolvedPlan);
-    }
-  }, []);
+  // Planul vine din adresă (?plan=pro); dacă lipsește, din planul salvat (aceeași cheie ca pe Home)
+  const search = useSearchString();
+  const params = new URLSearchParams(search);
+  const storedPlan = useStoredValue(STORAGE_KEYS.selectedPlan);
+  const plan: PricingPlan =
+    getPlanById(params.get('plan')) ?? getPlanById(storedPlan) ?? PRICING_PLANS[1];
+  const wasCanceled = params.get('canceled') === '1';
 
-  const isDark = theme === 'dark';
   const ui = getUi(isDark);
   const t = (textRo: string, textEn: string) => {
     if (lang === 'ro') {
@@ -92,7 +83,7 @@ export default function CheckoutPage() {
 
   return (
     <div className={`min-h-screen font-sans pb-24 transition-colors ${ui.page}`}>
-      <Navbar lang={lang} setLang={setLang} theme={theme} setTheme={setTheme} />
+      <Navbar />
 
       <div className="max-w-5xl mx-auto px-4 sm:px-6 pt-12 grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
         {/* ---------- STÂNGA: rezumatul planului ---------- */}

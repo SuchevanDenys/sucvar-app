@@ -7,8 +7,8 @@
 // IMPORTANT: semnătura se verifică pe corpul BRUT (request.text()), nu pe JSON parsat.
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
-import { getAdmin } from '@/app/lib/quota';
-import { getStripe, isPaidPlan } from '@/app/lib/stripe';
+import { getAdmin } from '@/app/lib/supabase/admin';
+import { getStripe, isPaidPlan } from '@/app/lib/billing/stripe';
 
 type Tier = 'starter' | 'pro' | 'agency';
 

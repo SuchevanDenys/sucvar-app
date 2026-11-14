@@ -9,7 +9,7 @@ import {
   PlanId,
   RoomDimensions,
   VisualStyle,
-} from '@/app/types/studio';
+} from '@/app/types';
 
 // =====================================================================
 // 1. SPACE MODES

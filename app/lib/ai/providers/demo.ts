@@ -1,8 +1,8 @@
 // app/lib/ai/providers/demo.ts
 // Furnizor de test: întoarce o imagine fixă, fără niciun apel către un model AI.
 // Se folosește când nu este configurat nici Stable Diffusion, nici Replicate.
-import { DesignMode } from '@/app/types/studio';
-import { GenerationRequest, GenerationResult, ImageProvider } from './types';
+import { DesignMode } from '@/app/types';
+import { GenerationResult, ImageProvider } from './types';
 
 const DEMO_IMAGES: Record<DesignMode, string> = {
   interiors:
@@ -18,7 +18,7 @@ export function createDemoProvider(mode: DesignMode): ImageProvider {
   return {
     id: 'demo',
     isConfigured: () => true,
-    async generate(_request: GenerationRequest): Promise<GenerationResult> {
+    async generate(): Promise<GenerationResult> {
       // Simulăm timpul de generare, ca interfața să arate starea „Se generează...”
       await new Promise((resolve) => setTimeout(resolve, 1800));
       return { imageUrl: DEMO_IMAGES[mode], isDemo: true };
