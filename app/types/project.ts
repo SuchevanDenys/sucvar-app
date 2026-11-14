@@ -36,5 +36,12 @@ export interface ProjectRow {
 // Result of saveProjectToDb()
 export interface SaveProjectResult {
   savedToCloud: boolean;
+  savedLocally: boolean; // false dacă nici memoria browserului nu a mai avut loc
+  errorMessage?: string;
+}
+
+// Result of deleteProjectFromDb()
+export interface DeleteProjectResult {
+  ok: boolean;
   errorMessage?: string;
 }

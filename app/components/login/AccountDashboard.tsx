@@ -5,7 +5,7 @@
 import React from 'react';
 import Link from 'next/link';
 import { ArrowRight, ExternalLink, Layers, LogOut, Plus, Trash2, UserCheck } from 'lucide-react';
-import { VISUAL_STYLES, calculateEngineering } from '@/app/data/catalog';
+import { calculateEngineering, getStyle } from '@/app/data/catalog';
 import { formatProjectDate } from '@/app/lib/format';
 import type { UsePlan } from '@/app/lib/plan/usePlan';
 import { getUi } from '@/app/lib/theme/tokens';
@@ -21,6 +21,8 @@ interface AccountDashboardProps {
   authStatus: string | null;
   plan: UsePlan;
   projects: SavedProject[];
+  deletingId: string | null;
+  archiveMessage: string | null;
   onLogout: () => void;
   onDeleteProject: (projectId: string, event?: React.MouseEvent) => void;
   onOpenInStudio: (project: SavedProject) => void;
@@ -37,6 +39,8 @@ export default function AccountDashboard({
   authStatus,
   plan,
   projects,
+  deletingId,
+  archiveMessage,
   onLogout,
   onDeleteProject,
   onOpenInStudio,
@@ -165,6 +169,12 @@ export default function AccountDashboard({
         )}
       </div>
 
+      {archiveMessage && (
+        <p role="alert" className="text-xs text-red-500 font-medium">
+          {archiveMessage}
+        </p>
+      )}
+
       {projects.length === 0 ? (
         <div className={`p-12 rounded-md border text-center space-y-4 ${ui.card}`}>
           <p className={`text-sm ${ui.muted}`}>
@@ -189,12 +199,9 @@ export default function AccountDashboard({
             const height = Number(project.dimensions?.height) || 2.6;
             const projectArea = width * length;
             const previewImage = project.generatedImage || project.originalImage;
-            const styleObj = VISUAL_STYLES.find((s) => s.id === project.styleId);
-            const styleLabel = styleObj
-              ? lang === 'ro'
-                ? styleObj.nameRo
-                : styleObj.nameEn
-              : project.styleId;
+            const styleObj = getStyle(project.styleId);
+            const styleLabel = lang === 'ro' ? styleObj.nameRo : styleObj.nameEn;
+            const isDeleting = deletingId === project.id;
 
             return (
               <div
@@ -244,6 +251,11 @@ export default function AccountDashboard({
                       {width} × {length} × {height} m · {projectArea.toFixed(1)} m² ·{' '}
                       {formatProjectDate(project.createdAt)}
                     </p>
+                    {project.totalBudget > 0 && (
+                      <p className={`text-xs font-mono mt-0.5 ${ui.accent}`}>
+                        ≈ {project.totalBudget.toLocaleString('ro-RO')} €
+                      </p>
+                    )}
                   </div>
 
                   <div className="flex items-center gap-2 shrink-0">
@@ -262,8 +274,9 @@ export default function AccountDashboard({
                     <button
                       type="button"
                       onClick={(e) => onDeleteProject(project.id, e)}
-                      aria-label="Delete project"
-                      className={`h-9 w-9 rounded-sm border flex items-center justify-center cursor-pointer touch-manipulation ${ui.btnGhost}`}
+                      disabled={isDeleting}
+                      aria-label={t('Șterge proiectul', 'Delete project')}
+                      className={`h-9 w-9 rounded-sm border flex items-center justify-center cursor-pointer touch-manipulation disabled:opacity-50 disabled:cursor-wait ${ui.btnGhost}`}
                     >
                       <Trash2 className="w-4 h-4" />
                     </button>

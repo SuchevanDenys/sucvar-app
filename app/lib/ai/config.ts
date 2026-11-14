@@ -15,6 +15,8 @@ export const AI_LIMITS = {
   extraPromptMaxLength: 400,
   negativePromptMaxLength: 600,
   seedMax: 2_147_483_647,
+  // Lungimea maximă a fotografiei trimise ca Data URL (~6 MB ca text base64)
+  maxImageLength: 6_000_000,
 };
 
 // Limitele planurilor de abonament

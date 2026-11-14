@@ -17,13 +17,14 @@ interface ManufacturerSpecsProps {
   selectedItems: SpecItem[];
   excludedItemIds: string[];
   saveMessage: string | null;
+  isSaving?: boolean;
   onToggleItem: (id: string) => void;
   onExportPdf: () => void;
   onSave: () => void;
 }
 
 const ManufacturerSpecs = forwardRef<HTMLElement, ManufacturerSpecsProps>(function ManufacturerSpecs(
-  { lang, isDark, specItems, selectedItems, excludedItemIds, saveMessage, onToggleItem, onExportPdf, onSave },
+  { lang, isDark, specItems, selectedItems, excludedItemIds, saveMessage, isSaving = false, onToggleItem, onExportPdf, onSave },
   ref,
 ) {
   const sk = getSkin(isDark);
@@ -82,9 +83,11 @@ const ManufacturerSpecs = forwardRef<HTMLElement, ManufacturerSpecsProps>(functi
         <button
           type="button"
           onClick={onSave}
-          className={`inline-flex items-center gap-2 h-10 px-5 rounded-sm cursor-pointer touch-manipulation transition-colors ${EYEBROW} ${sk.btnGhost}`}
+          disabled={isSaving}
+          className={`inline-flex items-center gap-2 h-10 px-5 rounded-sm cursor-pointer touch-manipulation transition-colors disabled:opacity-50 disabled:cursor-not-allowed ${EYEBROW} ${sk.btnGhost}`}
         >
-          <Save className="w-3.5 h-3.5" /> {t('Salvează în cont', 'Save to account')}
+          <Save className="w-3.5 h-3.5" />{' '}
+          {isSaving ? t('Se salvează…', 'Saving…') : t('Salvează în cont', 'Save to account')}
         </button>
         {saveMessage && (
           <span className={`text-xs ${sk.muted}`}>

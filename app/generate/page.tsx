@@ -2,6 +2,7 @@
 // Studio SUCVAR v3.1 — "Dark Architecture".
 // v3.1: style dropdown z-index fix, project name field, post-checkout plan sync,
 //       paid tiers (pro / agency) treated as unlimited.
+// v3.2: validare cote + fotografie, estimare de cost în timp real, salvare/restaurare robustă.
 "use client";
 
 import React, { useEffect, useMemo, useRef, useState } from 'react';
@@ -17,23 +18,41 @@ import {
   SPACE_MODES,
   VISUAL_STYLES,
   calculateEngineering,
+  estimateCost,
   generateSpecItems,
   getSpace,
+  getStyle,
 } from '@/app/data/catalog';
 import { AI_LIMITS, DEFAULT_AI_SETTINGS, PLAN_LIMITS } from '@/app/lib/ai/config';
 import { getAccessToken, getSessionEmail } from '@/app/lib/supabase/auth';
-import { saveProjectToDb } from '@/app/lib/supabase/projects';
+import { getProjectById, saveProjectToDb } from '@/app/lib/supabase/projects';
 import { getMonthlyUsage, recordGeneration, resolvePlan } from '@/app/lib/plan/client';
 import { usePlan } from '@/app/lib/plan/usePlan';
 import { getSkin, EYEBROW } from '@/app/lib/theme/skin';
 import { usePrefs } from '@/app/lib/theme/usePrefs';
 import { STORAGE_KEYS, readStorage, removeStorage, writeStorage } from '@/app/lib/storage';
-import { MODE_IDS, PROJECT_NAME_MAX, LOADING_STEPS_RO, LOADING_STEPS_EN, type NumberField } from '@/app/lib/studio/constants';
-import { resizePhoto, toPermanentDataUrl, sleep } from '@/app/lib/studio/images';
+import {
+  ACCEPTED_PHOTO_TYPES,
+  MODE_IDS,
+  PROJECT_NAME_MAX,
+  LOADING_STEPS_RO,
+  LOADING_STEPS_EN,
+  MIN_PHOTO_SIDE,
+  MAX_PHOTO_BYTES,
+  type NumberField,
+} from '@/app/lib/studio/constants';
+import { PhotoError, resizePhoto, toPermanentDataUrl, sleep } from '@/app/lib/studio/images';
+import {
+  DIMENSION_LIMITS,
+  getHeightLimits,
+  sanitizeDimensions,
+  validateDimensions,
+} from '@/app/lib/studio/validation';
 import DimensionsPanel from '@/app/components/studio/DimensionsPanel';
 import StylePicker from '@/app/components/studio/StylePicker';
 import TelemetryBar from '@/app/components/studio/TelemetryBar';
 import StudioViewport from '@/app/components/studio/StudioViewport';
+import CostBreakdown from '@/app/components/studio/CostBreakdown';
 import EngineeringPanel from '@/app/components/studio/EngineeringPanel';
 import ManufacturerSpecs from '@/app/components/studio/ManufacturerSpecs';
 import PrintBlueprint from '@/app/components/studio/PrintBlueprint';
@@ -49,7 +68,7 @@ export default function StudioPage() {
   // Setări pagină
   const { lang, isDark } = usePrefs();
 
-  // Setări proiect
+  // ── Stare: setările proiectului (alegerile utilizatorului din coloana stângă) ──
   const [projectName, setProjectName] = useState('');
   const [mode, setMode] = useState<DesignMode>('interiors');
   const [selectedSpace, setSelectedSpace] = useState(SPACE_MODES.interiors.spaces[0].id);
@@ -68,7 +87,8 @@ export default function StudioPage() {
   const [aiSettings, setAiSettings] = useState<AiSettings>(DEFAULT_AI_SETTINGS);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
 
-  // Rezultate
+  // ── Stare: rezultatul generării și mesajele de interfață ──
+  // (loading / eroare / salvare sunt stări separate, ca fiecare acțiune să aibă feedback clar)
   const [generatedImage, setGeneratedImage] = useState<string | null>(null);
   const [isDemoResult, setIsDemoResult] = useState(false);
   const [isLoading, setIsLoading] = useState(false);
@@ -80,6 +100,8 @@ export default function StudioPage() {
   const [providerNote, setProviderNote] = useState<string | null>(null);
   const [gateCode, setGateCode] = useState<'LIMIT_REACHED' | 'AUTH_REQUIRED' | null>(null);
   const [paymentSync, setPaymentSync] = useState<'checking' | 'active' | 'pending' | null>(null);
+  const [isSaving, setIsSaving] = useState(false); // blochează dublu-click pe „Salvează"
+  const [isPhotoLoading, setIsPhotoLoading] = useState(false); // citire + redimensionare foto
 
   // Plan de abonament (starter = gratuit / pro / agency) + consum lunar de generări
   const plan = usePlan();
@@ -91,38 +113,72 @@ export default function StudioPage() {
   const fileInputRef = useRef<HTMLInputElement>(null);
   const specSectionRef = useRef<HTMLElement>(null);
   const loadingTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // Numărul „generației" curente: crește când se schimbă fotografia sau spațiul, ca un
+  // răspuns întârziat al serverului să nu suprascrie setările mai noi.
+  const runIdRef = useRef(0);
+  // Id-ul proiectului deschis din Arhivă; la salvare îl actualizăm în loc să creăm un duplicat.
+  const loadedProjectIdRef = useRef<string | null>(null);
 
   // ── Efecte inițiale ────────────────────────────────────────────────────────
   // Restaurarea din localStorage (proiect deschis din Arhivă / stil preferat) nu poate
   // rula la SSR, deci se face o singură dată după montare.
-  /* eslint-disable react-hooks/set-state-in-effect */
-  useEffect(() => {
-    // Dacă utilizatorul a apăsat "Deschide în Studio" pe un proiect din Arhivă (/login), îl încărcăm:
-    const activeProjectRaw = readStorage(STORAGE_KEYS.activeProject);
-    if (activeProjectRaw) {
-      removeStorage(STORAGE_KEYS.activeProject);
-      try {
-        const restored = JSON.parse(activeProjectRaw) as SavedProject;
-        setMode(restored.mode);
-        setSelectedSpace(restored.spaceType);
-        setSelectedStyleId(restored.styleId);
-        setRoomDimensions(restored.dimensions);
-        setOriginalImage(restored.originalImage);
-        setGeneratedImage(restored.generatedImage);
-        setProjectName(restored.title ?? '');
-        setIssueDate(new Date(restored.createdAt).toLocaleDateString('ro-RO'));
-      } catch {
-        // ignore invalid json
-      }
-    }
 
-    const savedStyle = readStorage(STORAGE_KEYS.preferredStyle);
-    if (savedStyle && VISUAL_STYLES.some((s) => s.id === savedStyle)) {
-      setSelectedStyleId(savedStyle);
-    }
+  // Aplică un proiect salvat în toate câmpurile Studio-ului. Datele vechi sau corupte
+  // sunt corectate (mod/spațiu/stil necunoscute → prima variantă; cote → limitate).
+  const applyProject = (restored: SavedProject) => {
+    const restoredMode: DesignMode = restored.mode in SPACE_MODES ? restored.mode : 'interiors';
+    const restoredSpace = getSpace(restoredMode, restored.spaceType);
+    runIdRef.current += 1;
+    loadedProjectIdRef.current = restored.id;
+    setMode(restoredMode);
+    setSelectedSpace(restoredSpace.id);
+    setSelectedStyleId(getStyle(restored.styleId).id);
+    setRoomDimensions(sanitizeDimensions(restored.dimensions, restoredMode, restoredSpace.id));
+    setOriginalImage(restored.originalImage);
+    setGeneratedImage(restored.generatedImage);
+    setExcludedItemIds([]);
+    setProjectName(restored.title ?? '');
+    setIssueDate(new Date(restored.createdAt).toLocaleDateString('ro-RO'));
+  };
+
+  useEffect(() => {
+    const restore = async () => {
+      // „Deschide în Studio" din Arhivă (/login) lasă aici id-ul proiectului
+      // (sau, în versiunile vechi, întregul proiect ca JSON).
+      const activeRaw = readStorage(STORAGE_KEYS.activeProject);
+      if (activeRaw) {
+        removeStorage(STORAGE_KEYS.activeProject);
+        let project: SavedProject | null = null;
+        try {
+          if (activeRaw.trim().startsWith('{')) {
+            project = JSON.parse(activeRaw) as SavedProject;
+          } else {
+            const email = (await getSessionEmail()) ?? readStorage(STORAGE_KEYS.userEmail);
+            project = email ? await getProjectById(email, activeRaw) : null;
+          }
+        } catch {
+          project = null;
+        }
+        if (project) {
+          applyProject(project);
+          return; // stilul preferat nu trebuie să suprascrie stilul proiectului
+        }
+        setErrorMessage(
+          lang === 'ro'
+            ? 'Proiectul nu a putut fi încărcat (a fost șters sau datele lui sunt invalide).'
+            : 'The project could not be loaded (it was deleted or its data is invalid).',
+        );
+      }
+
+      const savedStyle = readStorage(STORAGE_KEYS.preferredStyle);
+      if (savedStyle && VISUAL_STYLES.some((s) => s.id === savedStyle)) {
+        setSelectedStyleId(savedStyle);
+      }
+    };
+    void restore();
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- rulează o singură dată, la montare
   }, []);
 
-  /* eslint-enable react-hooks/set-state-in-effect */
 
   useEffect(() => () => { if (loadingTimerRef.current) clearInterval(loadingTimerRef.current); }, []);
 
@@ -164,13 +220,26 @@ export default function StudioPage() {
   const t = (ro: string, en: string) => (lang === 'ro' ? ro : en);
 
   const currentMode = SPACE_MODES[mode];
-  const currentStyle = VISUAL_STYLES.find((s) => s.id === selectedStyleId) ?? VISUAL_STYLES[0];
+  const currentStyle = getStyle(selectedStyleId);
   const currentSpace = getSpace(mode, selectedSpace);
   const currentLayouts = currentSpace.layouts;
 
+  // Cantitățile (arii, materiale, iluminat) se recalculează live la fiecare schimbare a cotelor
   const calculatedMaterials = useMemo(
     () => calculateEngineering(roomDimensions, mode, selectedSpace),
     [roomDimensions, mode, selectedSpace],
+  );
+
+  // Estimarea de cost depinde de cantități, de buget și de stilul ales
+  const costEstimate = useMemo(
+    () => estimateCost(roomDimensions, mode, selectedSpace, selectedStyleId, calculatedMaterials),
+    [roomDimensions, mode, selectedSpace, selectedStyleId, calculatedMaterials],
+  );
+
+  // Mesaje de validare pentru cote (lista goală = cotele sunt valide)
+  const dimensionIssues = useMemo(
+    () => validateDimensions(roomDimensions, mode, lang),
+    [roomDimensions, mode, lang],
   );
 
   const specItems = useMemo(
@@ -209,11 +278,16 @@ export default function StudioPage() {
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
+  // Schimbarea modului / spațiului resetează configurația și rezultatul anterior,
+  // iar cotele sunt aduse în limitele noului mod (ex: înălțimea unei camere ≤ 6 m).
   const applySpaceSelection = (modeId: DesignMode, spaceId: string) => {
     const nextSpace = getSpace(modeId, spaceId);
+    runIdRef.current += 1;
     setMode(modeId);
     setSelectedSpace(nextSpace.id);
-    setRoomDimensions((p) => ({ ...p, layoutPreset: nextSpace.layouts[0].id }));
+    setRoomDimensions((p) =>
+      sanitizeDimensions({ ...p, layoutPreset: nextSpace.layouts[0].id }, modeId, nextSpace.id),
+    );
     setExcludedItemIds([]);
     setGeneratedImage(null);
     setProviderNote(null);
@@ -231,8 +305,21 @@ export default function StudioPage() {
     writeStorage(STORAGE_KEYS.preferredStyle, id);
   };
 
-  const handleNumberChange = (field: NumberField, e: React.ChangeEvent<HTMLInputElement>) =>
-    setRoomDimensions((p) => ({ ...p, [field]: Math.max(0, Number(e.target.value)) }));
+  // Cotele numerice: valorile negative / invalide devin 0, uși și ferestre sunt întregi,
+  // iar plafonul maxim împiedică valori absurde. Minimul se verifică la validare, ca
+  // utilizatorul să poată șterge și rescrie liber numărul în câmp.
+  const handleNumberChange = (field: NumberField, e: React.ChangeEvent<HTMLInputElement>) => {
+    const parsed = Number(e.target.value);
+    let value = Number.isFinite(parsed) ? Math.max(0, parsed) : 0;
+    if (field === 'doorsCount' || field === 'windowsCount') {
+      value = Math.min(DIMENSION_LIMITS[field].max, Math.floor(value));
+    } else if (field === 'width' || field === 'length') {
+      value = Math.min(DIMENSION_LIMITS[field].max, value);
+    } else if (field === 'height') {
+      value = Math.min(getHeightLimits(mode).max, value);
+    }
+    setRoomDimensions((p) => ({ ...p, [field]: value }));
+  };
 
   const updateAi = <K extends keyof AiSettings>(key: K, value: AiSettings[K]) =>
     setAiSettings((p) => ({ ...p, [key]: value }));
@@ -247,19 +334,42 @@ export default function StudioPage() {
   const handleItemToggle = (id: string) =>
     setExcludedItemIds((p) => p.includes(id) ? p.filter((x) => x !== id) : [...p, id]);
 
+  // Încărcarea fotografiei: validăm formatul / dimensiunea, o redimensionăm și
+  // resetăm rezultatul anterior (el aparținea altei fotografii).
   const handlePhotoChange = async (e: React.ChangeEvent<HTMLInputElement>) => {
-    const file = e.target.files?.[0];
+    const input = e.target;
+    const file = input.files?.[0];
+    input.value = ''; // permite alegerea aceluiași fișier de două ori la rând
     if (!file) return;
+
     setErrorMessage(null);
+    setIsPhotoLoading(true);
     try {
-      setOriginalImage(await resizePhoto(file));
+      const resized = await resizePhoto(file);
+      runIdRef.current += 1;
+      loadedProjectIdRef.current = null;
+      setOriginalImage(resized);
       setGeneratedImage(null);
-    } catch {
-      setErrorMessage(t('Fotografia nu a putut fi citită.', 'The photo could not be read.'));
+      setIsDemoResult(false);
+      setProviderNote(null);
+      setSaveMessage(null);
+    } catch (err) {
+      const code = err instanceof PhotoError ? err.code : 'decode';
+      const messages: Record<string, string> = {
+        type: t('Format neacceptat. Folosește o fotografie JPEG, PNG sau WebP.', 'Unsupported format. Use a JPEG, PNG or WebP photo.'),
+        size: t(`Fotografia depășește ${MAX_PHOTO_BYTES / 1024 / 1024} MB.`, `The photo is larger than ${MAX_PHOTO_BYTES / 1024 / 1024} MB.`),
+        small: t(`Fotografia este prea mică (minim ${MIN_PHOTO_SIDE} px pe latura scurtă).`, `The photo is too small (at least ${MIN_PHOTO_SIDE} px on the short side).`),
+        huge: t('Fotografia este prea detaliată pentru a fi trimisă. Încearcă una mai simplă.', 'The photo is too detailed to upload. Try a simpler one.'),
+        decode: t('Fotografia nu a putut fi citită.', 'The photo could not be read.'),
+      };
+      setErrorMessage(messages[code] ?? messages.decode);
+    } finally {
+      setIsPhotoLoading(false);
     }
   };
 
   const startLoadingAnimation = () => {
+    stopLoadingAnimation(); // nu lăsăm niciodată două cronometre active
     setLoadingStep(0);
     loadingTimerRef.current = setInterval(
       () => setLoadingStep((s) => (s + 1) % loadingSteps.length),
@@ -274,8 +384,14 @@ export default function StudioPage() {
     }
   };
 
+  // Generarea: verifică planul și cotele, apelează /api/generate (cu timeout) și
+  // tratează fiecare tip de eroare (limită, autentificare, rețea, răspuns invalid).
   const handleGenerate = async () => {
-    if (!originalImage || isLoading) return;
+    if (!originalImage || isLoading || isPhotoLoading) return;
+    if (dimensionIssues.length > 0) {
+      setErrorMessage(dimensionIssues[0]);
+      return;
+    }
 
     // Verificare plan (re-citită la fiecare click): „starter" are maximum
     // PLAN_LIMITS.starterMonthlyGenerations generări AI pe lună. „pro" / „agency" = nelimitat.
@@ -302,9 +418,15 @@ export default function StudioPage() {
     setProviderNote(null);
     startLoadingAnimation();
 
+    const runId = runIdRef.current;
+    // Serverul are maxDuration = 60 s; oprim cererea după 100 s ca interfața să nu rămână blocată
+    const controller = new AbortController();
+    const timeoutId = setTimeout(() => controller.abort(), 100_000);
+
     try {
       const accessToken = await getAccessToken();
       const res = await fetch('/api/generate', {
+        signal: controller.signal,
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
@@ -344,68 +466,120 @@ export default function StudioPage() {
         throw new Error(data.error ?? 'Generation failed');
       }
 
-      setGeneratedImage(data.result);
-      setIsDemoResult(Boolean(data.isDemo));
-      setProviderNote(typeof data.warning === 'string' ? data.warning : null);
-      setIssueDate(new Date().toLocaleDateString('ro-RO'));
+      const result: unknown = data.result;
+      if (typeof result !== 'string' || !(result.startsWith('data:image/') || result.startsWith('http'))) {
+        throw new Error(t('Serverul a returnat un răspuns invalid. Încearcă din nou.', 'The server returned an invalid response. Please try again.'));
+      }
 
+      // Generarea a fost facturată/numărată pe server, deci o înregistrăm și local
       if (isStarter) {
         recordGeneration(currentPlan.email);
       }
 
+      // Dacă între timp s-au schimbat spațiul sau fotografia, rezultatul nu mai corespunde
+      if (runId !== runIdRef.current) {
+        setErrorMessage(t('Setările s-au schimbat în timpul generării, iar rezultatul a fost ignorat. Generează din nou.', 'Settings changed during generation, so the result was discarded. Generate again.'));
+        return;
+      }
+
+      loadedProjectIdRef.current = null; // o randare nouă = un proiect nou la salvare
+      setGeneratedImage(result);
+      setIsDemoResult(Boolean(data.isDemo));
+      setProviderNote(typeof data.warning === 'string' ? data.warning : null);
+      setIssueDate(new Date().toLocaleDateString('ro-RO'));
+
       setTimeout(() => specSectionRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' }), 400);
     } catch (err) {
-      setErrorMessage(err instanceof Error ? err.message : 'Error');
+      if (err instanceof DOMException && err.name === 'AbortError') {
+        setErrorMessage(t('Generarea durează prea mult. Încearcă din nou în câteva momente.', 'Generation is taking too long. Please try again in a moment.'));
+      } else if (err instanceof TypeError) {
+        setErrorMessage(t('Conexiunea cu serverul a eșuat. Verifică internetul și încearcă din nou.', 'Could not reach the server. Check your connection and try again.'));
+      } else {
+        setErrorMessage(err instanceof Error ? err.message : 'Error');
+      }
     } finally {
+      clearTimeout(timeoutId);
       stopLoadingAnimation();
       setIsLoading(false);
     }
   };
 
+  // Salvarea proiectului: cere cont, convertește randarea într-un Base64 permanent
+  // (URL-urile temporare expiră), apoi o trimite în Supabase cu rezervă locală.
   const handleSaveProject = async () => {
-    if (!originalImage || !generatedImage) return;
-    const sessionEmail = await getSessionEmail();
-    const userEmail = sessionEmail ?? readStorage(STORAGE_KEYS.userEmail);
-    if (!userEmail) {
-      setSaveMessage(t('Autentifică-te pentru a salva proiectul.', 'Sign in to save the project.'));
-      return;
-    }
+    if (!originalImage || !generatedImage || isSaving) return;
+    setIsSaving(true);
+    setSaveMessage(null);
+    try {
+      const sessionEmail = await getSessionEmail();
+      const userEmail = sessionEmail ?? readStorage(STORAGE_KEYS.userEmail);
+      if (!userEmail) {
+        setSaveMessage(t('Autentifică-te pentru a salva proiectul.', 'Sign in to save the project.'));
+        return;
+      }
 
-    // Server already returns a permanent JPEG Data URL. This is a safety net for the
-    // fallback case (temporary URL) and for demo images: it is a no-op for data URLs.
-    const permanentGeneratedImage = await toPermanentDataUrl(generatedImage);
+      // Serverul întoarce deja un Data URL JPEG permanent; aici e doar o plasă de siguranță
+      // pentru URL-uri temporare (pentru Data URL-uri nu face nimic).
+      const permanentGeneratedImage = await toPermanentDataUrl(generatedImage);
 
-    // Never persist a temporary http(s) URL: it expires and renders black the next day.
-    if (!permanentGeneratedImage.startsWith('data:image/')) {
+      // Nu salvăm niciodată un URL http(s) temporar: expiră și imaginea devine neagră a doua zi.
+      if (!permanentGeneratedImage.startsWith('data:image/')) {
+        setSaveMessage(
+          t(
+            'Imaginea generată a expirat sau nu poate fi descărcată. Generează din nou, apoi salvează.',
+            'The generated image expired or cannot be downloaded. Generate again, then save.',
+          ),
+        );
+        return;
+      }
+
+      // Dacă proiectul a fost deschis din Arhivă și nu s-a regenerat, îl actualizăm (același id)
+      const isUpdate = loadedProjectIdRef.current !== null;
+      const project: SavedProject = {
+        id: loadedProjectIdRef.current ?? crypto.randomUUID(),
+        userEmail: userEmail.toLowerCase(),
+        title: resolvedProjectName, // numele proiectului (utilizator sau default)
+        mode,
+        spaceType: selectedSpace,
+        styleId: selectedStyleId,
+        dimensions: roomDimensions,
+        originalImage,
+        generatedImage: permanentGeneratedImage,
+        totalBudget: costEstimate.total, // estimarea de cost orientativă, în €
+        createdAt: new Date().toISOString(),
+      };
+      const result = await saveProjectToDb(project);
+      loadedProjectIdRef.current = project.id; // salvările următoare actualizează, nu duplică
+
+      if (result.savedToCloud) {
+        setSaveMessage(
+          isUpdate
+            ? t('Proiect actualizat în Supabase Cloud!', 'Project updated in Supabase Cloud!')
+            : t('Proiect salvat în Supabase Cloud!', 'Project saved to Supabase Cloud!'),
+        );
+      } else if (result.savedLocally) {
+        setSaveMessage(
+          t(`Salvat local${result.errorMessage ? ` (${result.errorMessage})` : ''}.`,
+            `Saved locally${result.errorMessage ? ` (${result.errorMessage})` : ''}.`),
+        );
+      } else {
+        setSaveMessage(
+          t(
+            `Proiectul NU a putut fi salvat${result.errorMessage ? `: ${result.errorMessage}` : ''}. Memoria browserului este plină.`,
+            `The project could NOT be saved${result.errorMessage ? `: ${result.errorMessage}` : ''}. Browser storage is full.`,
+          ),
+        );
+      }
+    } catch (err) {
       setSaveMessage(
         t(
-          'Imaginea generată a expirat sau nu poate fi descărcată. Generează din nou, apoi salvează.',
-          'The generated image expired or cannot be downloaded. Generate again, then save.',
+          `Salvarea a eșuat: ${err instanceof Error ? err.message : 'eroare necunoscută'}.`,
+          `Saving failed: ${err instanceof Error ? err.message : 'unknown error'}.`,
         ),
       );
-      return;
+    } finally {
+      setIsSaving(false);
     }
-
-    const project: SavedProject = {
-      id: crypto.randomUUID(),
-      userEmail: userEmail.toLowerCase(),
-      title: resolvedProjectName, // numele proiectului (utilizator sau default)
-      mode,
-      spaceType: selectedSpace,
-      styleId: selectedStyleId,
-      dimensions: roomDimensions,
-      originalImage,
-      generatedImage: permanentGeneratedImage,
-      totalBudget: 0,
-      createdAt: new Date().toISOString(),
-    };
-    const result = await saveProjectToDb(project);
-    setSaveMessage(
-      result.savedToCloud
-        ? t('Proiect salvat în Supabase Cloud!', 'Project saved to Supabase Cloud!')
-        : t(`Salvat local${result.errorMessage ? ` (${result.errorMessage})` : ''}.`,
-            `Saved locally${result.errorMessage ? ` (${result.errorMessage})` : ''}.`),
-    );
   };
 
   const handleExportPdf = () => window.print();
@@ -514,6 +688,7 @@ export default function StudioPage() {
               isDark={isDark}
               roomDimensions={roomDimensions}
               floorArea={calculatedMaterials.floorArea}
+              issues={dimensionIssues}
               onNumberChange={handleNumberChange}
               onBudgetChange={(budget) => setRoomDimensions((p) => ({ ...p, budget }))}
             />
@@ -527,13 +702,17 @@ export default function StudioPage() {
                 04 · {t('Fotografie', 'Photo')}
               </div>
               <div className="p-4 space-y-4">
-                <input ref={fileInputRef} type="file" accept="image/*" onChange={handlePhotoChange} className="hidden" />
+                <input ref={fileInputRef} type="file" accept={ACCEPTED_PHOTO_TYPES.join(',')} onChange={handlePhotoChange} className="hidden" />
                 <button
                   type="button"
+                  disabled={isLoading || isPhotoLoading}
+                  aria-busy={isPhotoLoading}
                   onClick={() => fileInputRef.current?.click()}
-                  className={`relative w-full h-40 border border-dashed rounded-sm flex flex-col items-center justify-center gap-2 overflow-hidden cursor-pointer touch-manipulation transition-colors ${sk.btnGhost}`}
+                  className={`relative w-full h-40 border border-dashed rounded-sm flex flex-col items-center justify-center gap-2 overflow-hidden cursor-pointer touch-manipulation transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${sk.btnGhost}`}
                 >
-                  {originalImage
+                  {isPhotoLoading
+                    ? <span className={EYEBROW}>{t('Se procesează fotografia…', 'Processing photo…')}</span>
+                    : originalImage
                     ? <img src={originalImage} alt="Original" className="w-full h-full object-cover" />
                     : (
                       <>
@@ -640,7 +819,7 @@ export default function StudioPage() {
                 <button
                   type="button"
                   onClick={handleGenerate}
-                  disabled={!originalImage || isLoading || plan.limitReached}
+                  disabled={!originalImage || isLoading || isPhotoLoading || plan.limitReached || dimensionIssues.length > 0}
                   className={`w-full h-11 rounded-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer touch-manipulation ${EYEBROW} ${sk.btn}`}
                 >
                   {isLoading
@@ -681,6 +860,8 @@ export default function StudioPage() {
 
             <EngineeringPanel lang={lang} isDark={isDark} isLoading={isLoading} specRows={specRows} />
 
+            <CostBreakdown lang={lang} isDark={isDark} cost={costEstimate} styleName={styleName} />
+
             {generatedImage && (
               <ManufacturerSpecs
                 ref={specSectionRef}
@@ -690,6 +871,7 @@ export default function StudioPage() {
                 selectedItems={selectedItems}
                 excludedItemIds={excludedItemIds}
                 saveMessage={saveMessage}
+                isSaving={isSaving}
                 onToggleItem={handleItemToggle}
                 onExportPdf={handleExportPdf}
                 onSave={handleSaveProject}
@@ -711,6 +893,7 @@ export default function StudioPage() {
         generatedImage={generatedImage}
         specRows={specRows}
         selectedItems={selectedItems}
+        cost={costEstimate}
       />
     </div>
   );

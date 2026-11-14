@@ -20,11 +20,12 @@ interface DimensionsPanelProps {
   isDark: boolean;
   roomDimensions: RoomDimensions;
   floorArea: number;
+  issues: string[]; // mesaje de validare (listă goală = cote valide)
   onNumberChange: (field: NumberField, e: React.ChangeEvent<HTMLInputElement>) => void;
   onBudgetChange: (budget: BudgetTier) => void;
 }
 
-export default function DimensionsPanel({ lang, isDark, roomDimensions, floorArea, onNumberChange, onBudgetChange }: DimensionsPanelProps) {
+export default function DimensionsPanel({ lang, isDark, roomDimensions, floorArea, issues, onNumberChange, onBudgetChange }: DimensionsPanelProps) {
   const sk = getSkin(isDark);
   const t = (ro: string, en: string) => (lang === 'ro' ? ro : en);
   const eyebrow = `${EYEBROW} ${sk.dim}`;
@@ -81,6 +82,13 @@ export default function DimensionsPanel({ lang, isDark, roomDimensions, floorAre
         </span>
       </div>
     </div>
+    {issues.length > 0 && (
+      <ul role="alert" className={`px-4 py-3 border-t space-y-1 text-xs text-red-500 font-mono ${sk.line}`}>
+        {issues.map((issue) => (
+          <li key={issue}>{issue}</li>
+        ))}
+      </ul>
+    )}
     <div className={`p-4 border-t space-y-2 ${sk.line}`}>
       <span className={eyebrow}>{t('Buget', 'Budget')}</span>
       <div className={`flex border rounded-sm overflow-hidden divide-x ${sk.line} ${sk.divide}`}>

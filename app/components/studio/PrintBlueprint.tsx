@@ -3,7 +3,7 @@
 import React from 'react';
 import SucvarLogo from '@/app/components/layout/SucvarLogo';
 import type { SpecItem } from '@/app/data/catalog';
-import type { Language, RoomDimensions } from '@/app/types';
+import type { CostEstimate, Language, RoomDimensions } from '@/app/types';
 
 interface PrintBlueprintProps {
   lang: Language;
@@ -16,6 +16,7 @@ interface PrintBlueprintProps {
   generatedImage: string | null;
   specRows: { label: string; value: string }[];
   selectedItems: SpecItem[];
+  cost: CostEstimate;
 }
 
 export default function PrintBlueprint({
@@ -29,6 +30,7 @@ export default function PrintBlueprint({
   generatedImage,
   specRows,
   selectedItems,
+  cost,
 }: PrintBlueprintProps) {
   const t = (ro: string, en: string) => (lang === 'ro' ? ro : en);
 
@@ -72,6 +74,26 @@ export default function PrintBlueprint({
               <td className="p-2 font-mono text-right">{row.value}</td>
             </tr>
           ))}
+        </tbody>
+      </table>
+
+      <h2 className="text-xs font-semibold uppercase tracking-[0.2em] mt-8 mb-2">
+        {t('Estimare cost orientativă', 'Indicative cost estimate')}
+      </h2>
+      <table className="w-full text-xs border border-stone-300">
+        <tbody>
+          {cost.lines.map((line) => (
+            <tr key={line.id} className="border-b border-stone-200">
+              <td className="p-2">{t(line.labelRo, line.labelEn)}</td>
+              <td className="p-2 font-mono text-stone-500">{t(line.formulaRo, line.formulaEn)}</td>
+              <td className="p-2 font-mono text-right">{line.total.toLocaleString('ro-RO')} €</td>
+            </tr>
+          ))}
+          <tr className="bg-stone-100 font-semibold">
+            <td className="p-2">{t('Total estimat', 'Estimated total')}</td>
+            <td className="p-2 font-mono">{cost.perSqm.toLocaleString('ro-RO')} €/m²</td>
+            <td className="p-2 font-mono text-right">{cost.total.toLocaleString('ro-RO')} €</td>
+          </tr>
         </tbody>
       </table>
 

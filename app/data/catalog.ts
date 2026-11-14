@@ -2,8 +2,11 @@
 // Catalogul aplicației: spații, stiluri, planuri tarifare și calculatorul ingineresc.
 // v2.0 — manopera și link-urile de magazine au fost eliminate.
 //         Devizul expune acum specificații tehnice de producător, nu prețuri de retail.
+// v3.0 — stiluri cu paletă + materiale, estimare de cost orientativă (€/m²) în timp real.
 import {
   BudgetTier,
+  CostEstimate,
+  CostLine,
   DesignMode,
   EngineeringSpecs,
   PlanId,
@@ -238,19 +241,37 @@ export function getLayout(space: SpaceOption, layoutId: string | null | undefine
 
 // =====================================================================
 // 2. VISUAL STYLES
+//    Fiecare stil are: prompt AI, paletă curatată (hex + denumire), materiale
+//    caracteristice și un multiplicator de cost (`costFactor`) aplicat în estimare.
 // =====================================================================
+type StyleInput = Omit<VisualStyle, 'colors'>;
+
+// Derivă `colors` din paletă, ca să existe o singură sursă de adevăr pentru culori
+const defineStyle = (style: StyleInput): VisualStyle => ({
+  ...style,
+  colors: style.palette.map((swatch) => swatch.hex),
+});
+
 export const VISUAL_STYLES: VisualStyle[] = [
-  {
+  defineStyle({
     id: 'scandinavian',
-    nameRo: 'Scandinavian',
-    nameEn: 'Scandinavian',
+    nameRo: 'Modern Scandinavian',
+    nameEn: 'Modern Scandinavian',
     descRo: 'Stejar deschis, țesături naturale, lumină caldă și funcționalitate nordică.',
     descEn: 'Light oak timber, natural textiles, warm daylight and Nordic functionality.',
     prompt:
       'scandinavian architectural style, light natural oak wood, warm white walls, soft linen and wool textures, clean functional lines, bright natural daylight, 8k photorealistic',
-    colors: ['#F4F1EA', '#D8C7B2', '#8A9A86', '#2C3531'],
-  },
-  {
+    palette: [
+      { hex: '#F4F1EA', nameRo: 'Alb cald', nameEn: 'Warm white' },
+      { hex: '#D8C7B2', nameRo: 'Stejar deschis', nameEn: 'Light oak' },
+      { hex: '#8A9A86', nameRo: 'Verde salvie', nameEn: 'Sage green' },
+      { hex: '#2C3531', nameRo: 'Antracit verzui', nameEn: 'Green charcoal' },
+    ],
+    materialsRo: ['Stejar natur', 'Lână și in', 'Vopsea mată caldă', 'Ceramică mată'],
+    materialsEn: ['Natural oak', 'Wool and linen', 'Warm matte paint', 'Matte ceramics'],
+    costFactor: 1.0,
+  }),
+  defineStyle({
     id: 'modern',
     nameRo: 'Modern',
     nameEn: 'Modern',
@@ -258,9 +279,17 @@ export const VISUAL_STYLES: VisualStyle[] = [
     descEn: 'Crisp lines, clean volumes, matte surfaces and architectural lighting.',
     prompt:
       'modern architectural interior design, sleek walnut and matte stone surfaces, recessed linear LED lighting, balanced proportions, 8k photorealistic',
-    colors: ['#F2F0EC', '#5C4033', '#A39B8B', '#1C1C1A'],
-  },
-  {
+    palette: [
+      { hex: '#F2F0EC', nameRo: 'Alb de var', nameEn: 'Chalk white' },
+      { hex: '#5C4033', nameRo: 'Nuc', nameEn: 'Walnut' },
+      { hex: '#A39B8B', nameRo: 'Gri piatră', nameEn: 'Stone grey' },
+      { hex: '#1C1C1A', nameRo: 'Negru mat', nameEn: 'Matte black' },
+    ],
+    materialsRo: ['Furnir de nuc', 'Piatră sinterizată', 'Oțel negru mat', 'Sticlă extra-clară'],
+    materialsEn: ['Walnut veneer', 'Sintered stone', 'Matte black steel', 'Extra-clear glass'],
+    costFactor: 1.1,
+  }),
+  defineStyle({
     id: 'contemporary',
     nameRo: 'Contemporary',
     nameEn: 'Contemporary',
@@ -268,9 +297,17 @@ export const VISUAL_STYLES: VisualStyle[] = [
     descEn: 'Current textures, subtle contrast, natural stone and sculpted furniture.',
     prompt:
       'contemporary architectural design, travertine stone, bouclé upholstery, brushed bronze details, warm ambient lighting, 8k photorealistic',
-    colors: ['#EAE6DF', '#B89F82', '#6E786E', '#1F2421'],
-  },
-  {
+    palette: [
+      { hex: '#EAE6DF', nameRo: 'Ecru', nameEn: 'Ecru' },
+      { hex: '#B89F82', nameRo: 'Travertin', nameEn: 'Travertine' },
+      { hex: '#6E786E', nameRo: 'Verde măsliniu', nameEn: 'Olive green' },
+      { hex: '#1F2421', nameRo: 'Grafit', nameEn: 'Graphite' },
+    ],
+    materialsRo: ['Travertin', 'Bouclé', 'Bronz periat', 'Lemn afumat'],
+    materialsEn: ['Travertine', 'Bouclé', 'Brushed bronze', 'Smoked timber'],
+    costFactor: 1.25,
+  }),
+  defineStyle({
     id: 'minimalist',
     nameRo: 'Minimalist',
     nameEn: 'Minimalist',
@@ -278,19 +315,71 @@ export const VISUAL_STYLES: VisualStyle[] = [
     descEn: 'Uncluttered space, concealed storage, warm monochrome palette.',
     prompt:
       'warm minimalist architectural design, flush handleless cabinetry, microcement and pale timber, serene uncluttered space, soft diffused light, 8k photorealistic',
-    colors: ['#F7F6F2', '#E2DDD4', '#9E988E', '#141413'],
-  },
-  {
-    id: 'traditional',
-    nameRo: 'Traditional',
-    nameEn: 'Traditional',
-    descRo: 'Parchet chevron, profilaturi clasice pe pereți și materiale nobile.',
-    descEn: 'Chevron parquet, classic wall moldings and noble materials.',
+    palette: [
+      { hex: '#F7F6F2', nameRo: 'Alb pur cald', nameEn: 'Soft white' },
+      { hex: '#E2DDD4', nameRo: 'Bej nisip', nameEn: 'Sand beige' },
+      { hex: '#9E988E', nameRo: 'Gri cald', nameEn: 'Warm grey' },
+      { hex: '#141413', nameRo: 'Negru', nameEn: 'Black' },
+    ],
+    materialsRo: ['Microciment', 'Mobilier fără mânere', 'Lemn palid', 'Vopsea mată'],
+    materialsEn: ['Microcement', 'Handleless cabinetry', 'Pale timber', 'Matte paint'],
+    costFactor: 1.05,
+  }),
+  defineStyle({
+    id: 'minimalist_obsidian',
+    nameRo: 'Minimalist Obsidian',
+    nameEn: 'Minimalist Obsidian',
+    descRo: 'Minimalism întunecat: negru obsidian, piatră neagră mată și lumină liniară discretă.',
+    descEn: 'Dark minimalism: obsidian black, matte black stone and discreet linear light.',
     prompt:
-      'refined traditional European architectural design, classic wall wainscoting, chevron oak parquet, tailored upholstery, warm brass sconces, 8k photorealistic',
-    colors: ['#F5F2EB', '#B5946B', '#4A5550', '#2B2623'],
-  },
-  {
+      'dark minimalist obsidian architectural design, matte black stone surfaces, charcoal microcement, smoked oak, hidden linear LED lighting, moody serene atmosphere, 8k photorealistic',
+    palette: [
+      { hex: '#0E0F10', nameRo: 'Negru obsidian', nameEn: 'Obsidian black' },
+      { hex: '#2A2D30', nameRo: 'Cărbune', nameEn: 'Charcoal' },
+      { hex: '#6B6E70', nameRo: 'Gri bazalt', nameEn: 'Basalt grey' },
+      { hex: '#B08D57', nameRo: 'Alamă satinată', nameEn: 'Satin brass' },
+    ],
+    materialsRo: ['Piatră neagră mată', 'Microciment antracit', 'Stejar afumat', 'Alamă satinată'],
+    materialsEn: ['Matte black stone', 'Charcoal microcement', 'Smoked oak', 'Satin brass'],
+    costFactor: 1.4,
+  }),
+  defineStyle({
+    id: 'japandi',
+    nameRo: 'Japandi',
+    nameEn: 'Japandi',
+    descRo: 'Fuziune japoneză–nordică: lemn cald, linii joase, ceramică artizanală și calm.',
+    descEn: 'Japanese–Nordic fusion: warm timber, low lines, handmade ceramics and calm.',
+    prompt:
+      'japandi architectural design, warm ash and walnut wood, low profile furniture, paper shoji lighting, handmade ceramics, neutral earthy tones, calm zen atmosphere, 8k photorealistic',
+    palette: [
+      { hex: '#EFE9DE', nameRo: 'Hârtie de orez', nameEn: 'Rice paper' },
+      { hex: '#C9B79C', nameRo: 'Frasin', nameEn: 'Ash wood' },
+      { hex: '#7C6A55', nameRo: 'Cafeniu pământiu', nameEn: 'Earth brown' },
+      { hex: '#3A3F3A', nameRo: 'Verde mușchi închis', nameEn: 'Deep moss' },
+    ],
+    materialsRo: ['Frasin și nuc', 'Ceramică artizanală', 'Hârtie shoji', 'Fibre naturale'],
+    materialsEn: ['Ash and walnut', 'Handmade ceramics', 'Shoji paper', 'Natural fibres'],
+    costFactor: 1.2,
+  }),
+  defineStyle({
+    id: 'traditional',
+    nameRo: 'Neo-Classic Paris',
+    nameEn: 'Neo-Classic Paris',
+    descRo: 'Eleganță haussmanniană: parchet chevron, lambriuri, cornișe și alamă patinată.',
+    descEn: 'Haussmann elegance: chevron parquet, wall moldings, cornices and aged brass.',
+    prompt:
+      'refined neo-classic Parisian architectural design, classic wall wainscoting, chevron oak parquet, ornate ceiling cornices, tailored upholstery, warm brass sconces, 8k photorealistic',
+    palette: [
+      { hex: '#F5F2EB', nameRo: 'Alb de cornișă', nameEn: 'Cornice white' },
+      { hex: '#B5946B', nameRo: 'Parchet miere', nameEn: 'Honey parquet' },
+      { hex: '#4A5550', nameRo: 'Verde Paris', nameEn: 'Paris green' },
+      { hex: '#2B2623', nameRo: 'Bronz închis', nameEn: 'Dark bronze' },
+    ],
+    materialsRo: ['Parchet chevron stejar', 'Lambriuri și cornișe', 'Alamă patinată', 'Marmură Carrara'],
+    materialsEn: ['Chevron oak parquet', 'Wainscoting and cornices', 'Aged brass', 'Carrara marble'],
+    costFactor: 1.45,
+  }),
+  defineStyle({
     id: 'mid_century_modern',
     nameRo: 'Mid-century Modern',
     nameEn: 'Mid-century Modern',
@@ -298,9 +387,17 @@ export const VISUAL_STYLES: VisualStyle[] = [
     descEn: 'Teak and walnut wood, iconic tapered-leg furniture and warm accents.',
     prompt:
       'mid-century modern architectural design, warm teak and walnut wood paneling, iconic organic furniture, cognac leather, statement pendant lamp, 8k photorealistic',
-    colors: ['#F3EFE6', '#9A5B34', '#4F6354', '#1E1E1C'],
-  },
-  {
+    palette: [
+      { hex: '#F3EFE6', nameRo: 'Crem', nameEn: 'Cream' },
+      { hex: '#9A5B34', nameRo: 'Tec', nameEn: 'Teak' },
+      { hex: '#4F6354', nameRo: 'Verde pin', nameEn: 'Pine green' },
+      { hex: '#1E1E1C', nameRo: 'Negru cald', nameEn: 'Warm black' },
+    ],
+    materialsRo: ['Tec și nuc', 'Piele coniac', 'Lână bouclé', 'Metal alămit'],
+    materialsEn: ['Teak and walnut', 'Cognac leather', 'Wool bouclé', 'Brass-finish metal'],
+    costFactor: 1.3,
+  }),
+  defineStyle({
     id: 'coastal',
     nameRo: 'Coastal',
     nameEn: 'Coastal',
@@ -308,19 +405,76 @@ export const VISUAL_STYLES: VisualStyle[] = [
     descEn: 'Sand tones, natural linen, bleached timber and airy coastal light.',
     prompt:
       'refined coastal architectural design, bleached oak flooring, crisp linen drapery, limestone textures, soft mineral blue-grey accents, abundant sunlight, 8k photorealistic',
-    colors: ['#F8F7F4', '#D9CEBE', '#7A9199', '#2F3E46'],
-  },
-  {
+    palette: [
+      { hex: '#F8F7F4', nameRo: 'Alb spumă', nameEn: 'Sea-foam white' },
+      { hex: '#D9CEBE', nameRo: 'Nisip', nameEn: 'Sand' },
+      { hex: '#7A9199', nameRo: 'Albastru mineral', nameEn: 'Mineral blue' },
+      { hex: '#2F3E46', nameRo: 'Bleumarin adânc', nameEn: 'Deep navy' },
+    ],
+    materialsRo: ['Stejar albit', 'In natural', 'Calcar', 'Ratan'],
+    materialsEn: ['Bleached oak', 'Natural linen', 'Limestone', 'Rattan'],
+    costFactor: 1.0,
+  }),
+  defineStyle({
     id: 'industrial',
-    nameRo: 'Industrial',
-    nameEn: 'Industrial',
+    nameRo: 'Industrial Loft',
+    nameEn: 'Industrial Loft',
     descRo: 'Beton aparent, oțel negru mat, cărămidă sau microciment și piele coniac.',
     descEn: 'Exposed concrete, matte black steel, microcement and cognac leather.',
     prompt:
       'architectural industrial loft design, microcement surfaces, matte black steel framing, warm cognac leather, exposed timber beams, warm track lighting, 8k photorealistic',
-    colors: ['#D6D3CD', '#8C5332', '#474B4F', '#141413'],
-  },
+    palette: [
+      { hex: '#D6D3CD', nameRo: 'Beton deschis', nameEn: 'Light concrete' },
+      { hex: '#8C5332', nameRo: 'Cărămidă aparentă', nameEn: 'Exposed brick' },
+      { hex: '#474B4F', nameRo: 'Oțel vechi', nameEn: 'Aged steel' },
+      { hex: '#141413', nameRo: 'Negru mat', nameEn: 'Matte black' },
+    ],
+    materialsRo: ['Microciment', 'Cărămidă aparentă', 'Oțel negru mat', 'Grinzi din lemn'],
+    materialsEn: ['Microcement', 'Exposed brick', 'Matte black steel', 'Timber beams'],
+    costFactor: 1.1,
+  }),
+  defineStyle({
+    id: 'brutalist_concrete',
+    nameRo: 'Brutalist Concrete',
+    nameEn: 'Brutalist Concrete',
+    descRo: 'Beton turnat aparent, volume masive, lemn brut și lumină dramatică, laterală.',
+    descEn: 'Board-formed exposed concrete, massive volumes, raw timber and dramatic side light.',
+    prompt:
+      'brutalist architectural design, raw board-formed exposed concrete walls, massive monolithic volumes, raw timber accents, blackened steel, dramatic raking light, 8k photorealistic',
+    palette: [
+      { hex: '#BDBAB3', nameRo: 'Beton turnat', nameEn: 'Cast concrete' },
+      { hex: '#8D8A84', nameRo: 'Gri brut', nameEn: 'Raw grey' },
+      { hex: '#5A4B3E', nameRo: 'Lemn brut', nameEn: 'Raw timber' },
+      { hex: '#191919', nameRo: 'Oțel înnegrit', nameEn: 'Blackened steel' },
+    ],
+    materialsRo: ['Beton aparent cofrat', 'Oțel înnegrit', 'Lemn brut', 'Sticlă fixă'],
+    materialsEn: ['Board-formed concrete', 'Blackened steel', 'Raw timber', 'Fixed glazing'],
+    costFactor: 1.15,
+  }),
+  defineStyle({
+    id: 'biophilic',
+    nameRo: 'Biophilic Organic',
+    nameEn: 'Biophilic Organic',
+    descRo: 'Plante integrate, piatră naturală, lemn cu textură și lumină naturală abundentă.',
+    descEn: 'Integrated greenery, natural stone, textured timber and abundant daylight.',
+    prompt:
+      'biophilic organic architectural design, abundant living plants, natural stone, textured raw timber, rattan, earthy green and terracotta tones, soft natural daylight, 8k photorealistic',
+    palette: [
+      { hex: '#EDEBE1', nameRo: 'Var natural', nameEn: 'Natural lime' },
+      { hex: '#6F8F5F', nameRo: 'Verde frunză', nameEn: 'Leaf green' },
+      { hex: '#B4694A', nameRo: 'Teracotă', nameEn: 'Terracotta' },
+      { hex: '#33392E', nameRo: 'Verde pădure', nameEn: 'Forest green' },
+    ],
+    materialsRo: ['Plante integrate', 'Piatră naturală', 'Lemn texturat', 'Teracotă'],
+    materialsEn: ['Integrated planting', 'Natural stone', 'Textured timber', 'Terracotta'],
+    costFactor: 1.15,
+  }),
 ];
+
+// Stilul cu id-ul dat; dacă id-ul e necunoscut (date vechi), se folosește primul stil.
+export function getStyle(styleId: string | null | undefined): VisualStyle {
+  return VISUAL_STYLES.find((s) => s.id === styleId) ?? VISUAL_STYLES[0];
+}
 
 // =====================================================================
 // 3. PRICING PLANS
@@ -352,13 +506,13 @@ export const PRICING_PLANS: PricingPlan[] = [
     featuresRo: [
       '3 proiecte pe lună',
       'Specificații tehnice de producător',
-      'Cele 8 direcții arhitecturale de stil',
+      `Cele ${VISUAL_STYLES.length} direcții arhitecturale de stil`,
       'Export PDF Blueprint',
     ],
     featuresEn: [
       '3 projects per month',
       'Manufacturer technical specifications',
-      'All 8 architectural style directions',
+      `All ${VISUAL_STYLES.length} architectural style directions`,
       'PDF Blueprint export',
     ],
     popular: false,
@@ -420,8 +574,12 @@ export function getPlanById(planId: string | null | undefined): PricingPlan | nu
 }
 
 // =====================================================================
-// 4. ENGINEERING CALCULATOR
+// 4. CALCULATORUL INGINERESC
+//    Toate formulele sunt pure (aceleași date de intrare → același rezultat),
+//    deci rulează identic în browser (calcul în timp real) și pe server.
 // =====================================================================
+
+// ── Constante geometrice și de execuție ──────────────────────────────
 const DOOR_AREA = 1.89;          // m²  (0.9 × 2.1 m)
 const WINDOW_AREA = 2.1;         // m²  (1.5 × 1.4 m)
 const DOOR_WIDTH = 0.9;          // m   (scăzut din plintă)
@@ -432,11 +590,16 @@ const PAINT_COVERAGE = 10;       // m²/L/strat
 const PAINT_RESERVE = 1.1;
 
 // Metoda lumenului: Φ = E × A / (UF × MF)
+//   Φ  = flux luminos total necesar (lm)
+//   E  = nivel de iluminare țintă (lx)
+//   A  = suprafața (m²)
+//   UF = factor de utilizare, MF = factor de mentenanță
 const UTILIZATION_FACTOR = 0.6;
 const MAINTENANCE_FACTOR = 0.9;
 const LUMENS_PER_FIXTURE = 800;  // ~9 W LED spot
 const DEFAULT_TARGET_LUX = 200;
 
+// Nivelul de iluminare recomandat (lx) pentru fiecare tip de spațiu
 const TARGET_LUX_BY_SPACE: Record<string, number> = {
   kitchen: 300,
   'living room': 200,
@@ -456,29 +619,48 @@ const PLASTERBOARD_WASTE = 1.1;
 const CEILING_PROFILE_PER_SQM = 3.2;      // ml CD 60 / m²
 const CEILING_HANGERS_PER_SQM = 1.5;      // bride / m²
 
+// Valoare numerică sigură: orice NaN / Infinity / număr negativ devine 0
+const safeNumber = (value: number): number => (Number.isFinite(value) && value > 0 ? value : 0);
+
+// Calculează toate cantitățile (arii, volum, materiale, iluminat, gips-carton)
+// pornind de la cotele introduse de utilizator. Este apelată la fiecare modificare
+// a cotelor, de aceea nu are efecte secundare.
 export function calculateEngineering(
   dims: RoomDimensions,
   mode: DesignMode = 'interiors',
   spaceType: string = 'living room',
 ): EngineeringSpecs {
-  const floorArea = +(dims.width * dims.length).toFixed(2);
-  const volume = +(floorArea * dims.height).toFixed(2);
-  const perimeter = (dims.width + dims.length) * 2;
-  const grossWallArea = perimeter * dims.height;
+  const width = safeNumber(dims.width);
+  const length = safeNumber(dims.length);
+  const height = safeNumber(dims.height);
+  // Uși și ferestre sunt numere întregi (o jumătate de ușă nu există)
+  const doors = Math.floor(safeNumber(dims.doorsCount));
+  const windows = Math.floor(safeNumber(dims.windowsCount));
 
-  const openings = dims.doorsCount * DOOR_AREA + dims.windowsCount * WINDOW_AREA;
+  // Aria pardoselii: A = lățime × lungime;  volum: V = A × înălțime
+  const floorArea = +(width * length).toFixed(2);
+  const volume = +(floorArea * height).toFixed(2);
+  const perimeter = (width + length) * 2;
+  const grossWallArea = perimeter * height;
+
+  // Aria netă a pereților = aria brută − golurile (uși + ferestre)
+  const openings = doors * DOOR_AREA + windows * WINDOW_AREA;
   const netWallArea = Math.max(0, +(grossWallArea - openings).toFixed(2));
 
+  // Pardoseală (+10% pierderi), vopsea (litri = arie × straturi / randament × rezervă),
+  // plintă (perimetrul minus lățimea ușilor, +5% rezervă; niciodată negativă)
   const flooringWithWaste = +(floorArea * FLOORING_WASTE).toFixed(2);
   const paintLiters = Math.ceil(((netWallArea * PAINT_COATS) / PAINT_COVERAGE) * PAINT_RESERVE);
-  const baseboardMeters = +((perimeter - dims.doorsCount * DOOR_WIDTH) * BASEBOARD_WASTE).toFixed(1);
+  const baseboardMeters = +(Math.max(0, perimeter - doors * DOOR_WIDTH) * BASEBOARD_WASTE).toFixed(1);
 
+  // Iluminat: fluxul total (metoda lumenului), apoi numărul de corpuri (rotunjit în sus)
   const targetLux = TARGET_LUX_BY_SPACE[spaceType] ?? DEFAULT_TARGET_LUX;
   const requiredLumens = Math.round(
     (targetLux * floorArea) / (UTILIZATION_FACTOR * MAINTENANCE_FACTOR),
   );
   const lightFixtures = floorArea > 0 ? Math.max(1, Math.ceil(requiredLumens / LUMENS_PER_FIXTURE)) : 0;
 
+  // Tavan suspendat din gips-carton: plăci, profile CD (câmp), UD (perimetru) și bride
   const hasCeiling = mode === 'interiors' && floorArea > 0;
   const plasterboardSheets = hasCeiling
     ? Math.ceil((floorArea * PLASTERBOARD_WASTE) / PLASTERBOARD_SHEET_AREA)
@@ -501,6 +683,115 @@ export function calculateEngineering(
     ceilingProfileMeters,
     perimeterProfileMeters,
     ceilingHangers,
+  };
+}
+
+// =====================================================================
+// 4b. ESTIMAREA DE COST (€ / m²)
+//     cost linie = cantitate × tarif unitar(buget) × factor de stil
+//     cost total = suma liniilor;  cost / m² = total ÷ aria pardoselii
+//     Tarifurile sunt orientative (piața din România, material + montaj, fără TVA).
+// =====================================================================
+type Rates = Record<BudgetTier, number>;
+
+// Tarife unitare pe nivel de buget: [economic, standard, premium]
+const rate = (economy: number, standard: number, luxury: number): Rates => ({ economy, standard, luxury });
+
+const UNIT_RATES = {
+  flooring: rate(24, 48, 110),   // €/m² pardoseală (material + montaj)
+  walls: rate(6, 11, 24),        // €/m² perete (pregătire + 2 straturi finisaj)
+  ceiling: rate(17, 26, 42),     // €/m² tavan suspendat gips-carton finisat
+  baseboard: rate(3, 6.5, 15),   // €/ml plintă montată
+  lightInterior: rate(20, 42, 105),  // €/corp LED încastrat + cablaj
+  lightOutdoor: rate(28, 60, 140),   // €/corp exterior IP65
+  facade: rate(32, 62, 135),     // €/m² fațadă (termosistem + finisaj/riflaj)
+  hardscape: rate(42, 75, 150),  // €/m² pavaj / deck exterior
+  planting: rate(12, 26, 55),    // €/m² spațiu verde (sol, plante, gazon)
+} as const;
+
+// Mobilier și dotări specifice spațiului, în € pe m² de suprafață utilă
+const FITOUT_PER_SQM: Record<string, Rates & { labelRo: string; labelEn: string }> = {
+  kitchen: { ...rate(420, 800, 1600), labelRo: 'Mobilier bucătărie & electrocasnice', labelEn: 'Kitchen cabinetry & appliances' },
+  'living room': { ...rate(150, 300, 650), labelRo: 'Mobilier living', labelEn: 'Living room furniture' },
+  'master bedroom': { ...rate(170, 340, 760), labelRo: 'Mobilier dormitor & dulapuri', labelEn: 'Bedroom furniture & wardrobes' },
+  'home office': { ...rate(130, 260, 560), labelRo: 'Mobilier birou & biblioteci', labelEn: 'Office furniture & bookcases' },
+  'modern villa exterior': { ...rate(55, 110, 240), labelRo: 'Tâmplărie, copertină & intrare', labelEn: 'Joinery, canopy & entrance' },
+  'townhouse facade': { ...rate(45, 90, 200), labelRo: 'Tâmplărie, copertină & balustrade', labelEn: 'Joinery, canopy & railings' },
+  'commercial building': { ...rate(70, 140, 300), labelRo: 'Vitrină, copertină & pavaj', labelEn: 'Storefront, canopy & paving' },
+  'backyard patio': { ...rate(70, 150, 340), labelRo: 'Pergolă, mobilier & zonă BBQ', labelEn: 'Pergola, furniture & BBQ area' },
+  'poolside garden': { ...rate(160, 330, 700), labelRo: 'Piscină, deck & șezlonguri', labelEn: 'Pool, deck & loungers' },
+  'front yard': { ...rate(18, 40, 95), labelRo: 'Alei, borduri & iluminat decorativ', labelEn: 'Pathways, edging & decorative lighting' },
+};
+
+const HARDSCAPE_SHARE = 0.4;  // ponderea suprafeței dalate/deck în grădini (restul = spațiu verde)
+const COST_RANGE = 0.15;      // intervalul de incertitudine ±15%
+
+const round = (n: number): number => Math.round(n);
+const fmtNum = (n: number): string => String(+n.toFixed(2));
+
+// Construiește estimarea de cost în timp real din cotele proiectului, stilul ales și buget.
+export function estimateCost(
+  dims: RoomDimensions,
+  mode: DesignMode,
+  spaceType: string,
+  styleId: string,
+  eng: EngineeringSpecs,
+): CostEstimate {
+  const budget = dims.budget;
+  const styleFactor = getStyle(styleId).costFactor;
+  const spaceKey = spaceType in FITOUT_PER_SQM ? spaceType : getSpace(mode, spaceType).id;
+  const fitout = FITOUT_PER_SQM[spaceKey];
+  const lines: CostLine[] = [];
+
+  // Adaugă o linie: cantitate × tarif (× factorul stilului, dacă se aplică)
+  const addLine = (
+    id: string,
+    labelRo: string,
+    labelEn: string,
+    quantity: number,
+    unit: string,
+    unitRate: number,
+    withStyle: boolean,
+  ) => {
+    if (quantity <= 0) return;
+    const factor = withStyle ? styleFactor : 1;
+    const factorTxt = factor !== 1 ? ` × ${factor.toFixed(2)}` : '';
+    const formula = `${fmtNum(quantity)} ${unit} × ${fmtNum(unitRate)} €/${unit}${factorTxt}`;
+    lines.push({
+      id,
+      labelRo,
+      labelEn,
+      formulaRo: formula + (factor !== 1 ? ' (stil)' : ''),
+      formulaEn: formula + (factor !== 1 ? ' (style)' : ''),
+      total: round(quantity * unitRate * factor),
+    });
+  };
+
+  if (eng.floorArea > 0) {
+    if (mode === 'interiors') {
+      addLine('c-floor', 'Pardoseală', 'Flooring', eng.flooringWithWaste, 'm²', UNIT_RATES.flooring[budget], true);
+      addLine('c-walls', 'Finisaj pereți', 'Wall finish', eng.netWallArea, 'm²', UNIT_RATES.walls[budget], true);
+      addLine('c-ceiling', 'Tavan suspendat', 'Suspended ceiling', eng.floorArea, 'm²', UNIT_RATES.ceiling[budget], false);
+      addLine('c-base', 'Plintă', 'Baseboard', eng.baseboardMeters, 'ml', UNIT_RATES.baseboard[budget], false);
+      addLine('c-light', 'Iluminat LED', 'LED lighting', eng.lightFixtures, 'buc', UNIT_RATES.lightInterior[budget], true);
+    } else if (mode === 'exteriors') {
+      addLine('c-facade', 'Fațadă (termosistem + finisaj)', 'Facade (ETICS + finish)', eng.netWallArea, 'm²', UNIT_RATES.facade[budget], true);
+      addLine('c-light', 'Iluminat exterior IP65', 'Exterior lighting IP65', eng.lightFixtures, 'buc', UNIT_RATES.lightOutdoor[budget], true);
+    } else {
+      addLine('c-hard', 'Pavaj / deck', 'Paving / decking', eng.flooringWithWaste * HARDSCAPE_SHARE, 'm²', UNIT_RATES.hardscape[budget], true);
+      addLine('c-green', 'Spațiu verde', 'Planting', eng.floorArea * (1 - HARDSCAPE_SHARE), 'm²', UNIT_RATES.planting[budget], false);
+      addLine('c-light', 'Iluminat grădină', 'Garden lighting', eng.lightFixtures, 'buc', UNIT_RATES.lightOutdoor[budget], true);
+    }
+    addLine('c-fitout', fitout.labelRo, fitout.labelEn, eng.floorArea, 'm²', fitout[budget], true);
+  }
+
+  const total = lines.reduce((sum, line) => sum + line.total, 0);
+  return {
+    lines,
+    total,
+    perSqm: eng.floorArea > 0 ? round(total / eng.floorArea) : 0,
+    min: round(total * (1 - COST_RANGE)),
+    max: round(total * (1 + COST_RANGE)),
   };
 }
 

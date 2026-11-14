@@ -55,6 +55,9 @@ export default function LoginAndAccountPage() {
   const [projects, setProjects] = useState<SavedProject[]>([]);
   const [activeProject, setActiveProject] = useState<SavedProject | null>(null);
   const [copiedKeyId, setCopiedKeyId] = useState<string | null>(null);
+  // Arhiva: proiectul în curs de ștergere (blochează dublu-click) + mesaj de eroare/stare
+  const [deletingId, setDeletingId] = useState<string | null>(null);
+  const [archiveMessage, setArchiveMessage] = useState<string | null>(null);
 
   const [authStatus, setAuthStatus] = useState<string | null>(null);
   const [authError, setAuthError] = useState<string | null>(null);
@@ -371,20 +374,48 @@ export default function LoginAndAccountPage() {
     resetMessages();
   };
 
+  // Ștergerea unui proiect din arhivă: cere confirmare (acțiunea nu se poate anula),
+  // iar proiectul dispare din listă doar dacă ștergerea a reușit și în Cloud.
   const handleDeleteProject = async (projectId: string, event?: React.MouseEvent) => {
     if (event) {
       event.stopPropagation();
     }
-    await deleteProjectFromDb(projectId);
+    if (deletingId) return;
+    const project = projects.find((p) => p.id === projectId);
+    const confirmed = window.confirm(
+      t(
+        `Ștergi proiectul „${project?.title ?? ''}"? Acțiunea nu poate fi anulată.`,
+        `Delete the project "${project?.title ?? ''}"? This cannot be undone.`,
+      ),
+    );
+    if (!confirmed) return;
+
+    setDeletingId(projectId);
+    setArchiveMessage(null);
+    const result = await deleteProjectFromDb(projectId);
+    setDeletingId(null);
+    if (!result.ok) {
+      setArchiveMessage(
+        t(
+          `Proiectul nu a putut fi șters${result.errorMessage ? `: ${result.errorMessage}` : ''}.`,
+          `The project could not be deleted${result.errorMessage ? `: ${result.errorMessage}` : ''}.`,
+        ),
+      );
+      return;
+    }
     setProjects((prev) => prev.filter((p) => p.id !== projectId));
     if (activeProject?.id === projectId) {
       setActiveProject(null);
     }
   };
 
-  // Deschide proiectul selectat direct în Studio (/generate) cu toate cotele și imaginile lui
+  // Deschide proiectul selectat în Studio (/generate). Transmitem doar id-ul: Studio
+  // îl încarcă din arhivă, fără să punem imagini Base64 de MB în localStorage.
   const handleOpenInStudio = (project: SavedProject) => {
-    writeStorage(STORAGE_KEYS.activeProject, JSON.stringify(project));
+    if (!writeStorage(STORAGE_KEYS.activeProject, project.id)) {
+      setArchiveMessage(t('Nu s-a putut deschide proiectul în Studio.', 'Could not open the project in Studio.'));
+      return;
+    }
     router.push('/generate');
   };
 
@@ -743,6 +774,8 @@ export default function LoginAndAccountPage() {
             plan={plan}
             projects={projects}
             onLogout={handleLogout}
+            deletingId={deletingId}
+            archiveMessage={archiveMessage}
             onDeleteProject={handleDeleteProject}
             onOpenInStudio={handleOpenInStudio}
             onSelectProject={setActiveProject}

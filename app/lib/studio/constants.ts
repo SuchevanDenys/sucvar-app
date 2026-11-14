@@ -4,6 +4,11 @@ import type { DesignMode } from '@/app/types';
 
 export const MODE_IDS: DesignMode[] = ['interiors', 'exteriors', 'gardens'];
 export const PROJECT_NAME_MAX = 80;
+
+// Fotografia încărcată: formate acceptate, dimensiune maximă a fișierului și latura minimă
+export const ACCEPTED_PHOTO_TYPES = ['image/jpeg', 'image/png', 'image/webp'] as const;
+export const MAX_PHOTO_BYTES = 15 * 1024 * 1024; // 15 MB (înainte de redimensionare)
+export const MIN_PHOTO_SIDE = 256; // px; sub această valoare modelul AI nu are detalii
 export type NumberField = 'width' | 'length' | 'height' | 'doorsCount' | 'windowsCount' | 'aiStrength';
 
 export const LOADING_STEPS_RO = [

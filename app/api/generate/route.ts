@@ -8,9 +8,9 @@ import Replicate from 'replicate';
 import sharp from 'sharp';
 import {
   SPACE_MODES,
-  VISUAL_STYLES,
   getLayout,
   getSpace,
+  getStyle,
 } from '@/app/data/catalog';
 import { AI_LIMITS, DEFAULT_AI_SETTINGS } from '@/app/lib/ai/config';
 import { BudgetTier, DesignMode } from '@/app/types';
@@ -19,8 +19,11 @@ import { checkGenerationQuota, recordServerGeneration } from '@/app/lib/server/q
 // sharp needs the Node.js runtime (not Edge)
 export const maxDuration = 60;
 
-// Maximum size of the uploaded photo (~6 MB as base64 text)
-const MAX_IMAGE_LENGTH = 6_000_000;
+// Maximum size of the uploaded photo (~6 MB as base64 text) — același plafon ca în browser
+const MAX_IMAGE_LENGTH = AI_LIMITS.maxImageLength;
+
+// Formate acceptate pentru fotografie (Data URL base64)
+const IMAGE_DATA_URL = /^data:image\/(jpeg|png|webp);base64,[A-Za-z0-9+/=]+$/;
 
 // Permanent result image: max width and JPEG quality
 const RESULT_MAX_WIDTH = 1280;
@@ -68,6 +71,7 @@ function readNumber(value: unknown, min: number, max: number, fallback: number):
   return Math.min(max, Math.max(min, parsed));
 }
 
+// Verifică dacă valoarea este un obiect simplu (nu null, nu listă)
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === 'object' && value !== null && !Array.isArray(value);
 }
@@ -249,6 +253,14 @@ async function toPermanentJpegDataUrl(sourceUrl: string): Promise<string> {
 // =====================================================================
 // POST /api/generate
 // =====================================================================
+// Handlerul principal al generării, pas cu pas:
+//  0. verifică sesiunea, planul și limita lunară (înainte de a citi body-ul);
+//  1. validează fotografia (format, dimensiune);
+//  2. alege spațiul, configurația și stilul, cu rezervă pe prima variantă;
+//  3. validează setările AI (nu avem încredere în browser);
+//  4. construiește promptul în limita de ~72 tokeni CLIP;
+//  5. fără token Replicate → imagine demo; altfel apelează modelul;
+//  7. convertește rezultatul într-un JPEG Base64 permanent.
 export async function POST(request: Request) {
   try {
     // 0. Sesiune + plan + limită lunară — ÎNAINTE de orice altă muncă
@@ -261,7 +273,13 @@ export async function POST(request: Request) {
       );
     }
 
-    const body: unknown = await request.json();
+    // Un body care nu este JSON valid este o eroare a clientului (400), nu a serverului
+    let body: unknown;
+    try {
+      body = await request.json();
+    } catch {
+      return NextResponse.json({ error: 'Cerere invalidă (JSON incorect).' }, { status: 400 });
+    }
     const payload = isRecord(body) ? body : {};
 
     // 1. Validate the photo
@@ -271,6 +289,12 @@ export async function POST(request: Request) {
     }
     if (image.length > MAX_IMAGE_LENGTH) {
       return NextResponse.json({ error: 'Fotografia este prea mare.' }, { status: 413 });
+    }
+    if (!IMAGE_DATA_URL.test(image)) {
+      return NextResponse.json(
+        { error: 'Format de fotografie neacceptat (folosește JPEG, PNG sau WebP).' },
+        { status: 415 }
+      );
     }
 
     // 2. Resolve mode → space → layout. Each step falls back INSIDE the previous one,
@@ -284,8 +308,7 @@ export async function POST(request: Request) {
       space,
       typeof dimensions.layoutPreset === 'string' ? dimensions.layoutPreset : null
     );
-    const style =
-      VISUAL_STYLES.find((candidate) => candidate.id === payload.styleId) ?? VISUAL_STYLES[0];
+    const style = getStyle(typeof payload.styleId === 'string' ? payload.styleId : null);
 
     const budget: BudgetTier = isBudgetTier(dimensions.budget) ? dimensions.budget : 'standard';
     const windowsCount = readNumber(dimensions.windowsCount, 0, 50, 2);

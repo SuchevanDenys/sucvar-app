@@ -99,6 +99,12 @@ export default function StylePicker({ lang, isDark, selectedStyleId, onSelect }:
         )}
       </div>
       <p className={`text-xs leading-relaxed ${sk.muted}`}>{styleDesc}</p>
+      <p className={`text-[11px] leading-relaxed ${sk.dim}`}>
+        {(lang === 'ro' ? currentStyle.materialsRo : currentStyle.materialsEn).join(' · ')}
+      </p>
+      <p className={`text-[11px] font-mono ${sk.dim}`}>
+        {currentStyle.palette.map((c) => (lang === 'ro' ? c.nameRo : c.nameEn)).join(' / ')}
+      </p>
     </div>
   </section>
   );

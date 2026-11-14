@@ -6,7 +6,7 @@ import React from 'react';
 import { Check, Copy, ExternalLink, X } from 'lucide-react';
 import BeforeAfterSlider from '@/app/components/ui/BeforeAfterSlider';
 import { SPACE_MODES, type SpecItem } from '@/app/data/catalog';
-import { calculateEngineering } from '@/app/data/catalog';
+import { calculateEngineering, estimateCost } from '@/app/data/catalog';
 import { formatProjectDate } from '@/app/lib/format';
 import { getUi } from '@/app/lib/theme/tokens';
 import type { Language, SavedProject } from '@/app/types';
@@ -37,6 +37,8 @@ export default function ProjectModal({
   const ui = getUi(isDark);
   const t = (textRo: string, textEn: string) => (lang === 'ro' ? textRo : textEn);
   const eyebrowClass = `text-[11px] uppercase tracking-[0.28em] ${ui.muted}`;
+  // Estimarea de cost se recalculează din cotele salvate (aceeași formulă ca în Studio)
+  const cost = estimateCost(project.dimensions, project.mode, project.spaceType, project.styleId, eng);
 
   return (
     <div
@@ -111,6 +113,34 @@ export default function ProjectModal({
           </div>
         </div>
       </div>
+
+      {/* Estimare cost orientativă */}
+      {cost.lines.length > 0 && (
+        <div className="space-y-2">
+          <p className={eyebrowClass}>{t('Estimare cost orientativă', 'Indicative cost estimate')}</p>
+          <div className={`border rounded-md divide-y ${ui.line}`}>
+            {cost.lines.map((line) => (
+              <div key={line.id} className="px-4 py-2.5 flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <p className="text-sm">{t(line.labelRo, line.labelEn)}</p>
+                  <p className={`text-[11px] font-mono ${ui.muted}`}>{t(line.formulaRo, line.formulaEn)}</p>
+                </div>
+                <span className="text-sm font-mono font-semibold shrink-0">
+                  {line.total.toLocaleString('ro-RO')} €
+                </span>
+              </div>
+            ))}
+            <div className="px-4 py-3 flex items-center justify-between gap-3">
+              <span className="text-xs font-semibold uppercase tracking-widest">
+                {t('Total', 'Total')} · {cost.perSqm.toLocaleString('ro-RO')} €/m²
+              </span>
+              <span className={`text-base font-mono font-semibold ${ui.accent}`}>
+                {cost.total.toLocaleString('ro-RO')} €
+              </span>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Devizul Tehnic de Producător */}
       <div className="space-y-2">
