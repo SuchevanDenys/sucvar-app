@@ -1,61 +1,35 @@
 // app/api/webhooks/stripe/route.ts
 // Primește evenimentele Stripe și sincronizează `profiles` (Service Role, ocolește RLS):
 //   • checkout.session.completed      -> plan plătit + stripe_customer_id + stripe_subscription_id
-//   • customer.subscription.updated   -> reactivare / schimbare plan / anulare efectivă
-//   • customer.subscription.deleted   -> înapoi la 'starter'
+//   • customer.subscription.updated   -> reactivare / schimbare plan / anulare programată / perioadă nouă
+//   • customer.subscription.deleted   -> înapoi la 'starter' (expirarea efectivă a abonamentului)
+//   • invoice.paid                    -> reînnoire plătită: prelungește current_period_end
+//
+// SINCRONIZAREA PERIOADEI: la fiecare eveniment copiem din Stripe în `profiles`
+// current_period_end (ISO), billing_interval ('month'|'year') și cancel_at_period_end.
+// Clientul și serverul compară current_period_end cu „acum" ca să trateze un abonament
+// expirat drept 'starter', chiar dacă webhook-ul de ștergere ar întârzia.
+//
+// CONFIRMARE DUBLĂ (webhook + verificare directă):
+//   Planul se activează pe DOUĂ căi independente, care scriu aceleași coloane din `profiles`
+//   (subscription_tier, stripe_customer_id, stripe_subscription_id) prin aceeași funcție
+//   (lib/server/subscription.ts):
+//     1. acest webhook — sursa de adevăr pe termen lung (reînnoiri, anulări, expirări);
+//     2. /api/checkout/verify — apelat de pagina de succes, activează planul INSTANT,
+//        fără să aștepte webhook-ul (care local poate lipsi sau întârzia).
+//   Oricare ajunge prima, cealaltă nu strică nimic: operația este idempotentă.
 //
 // IMPORTANT: semnătura se verifică pe corpul BRUT (request.text()), nu pe JSON parsat.
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
 import { getAdmin } from '@/app/lib/supabase/admin';
-import { getStripe, isPaidPlan } from '@/app/lib/billing/stripe';
-
-type Tier = 'starter' | 'pro' | 'agency';
+import { getStripe } from '@/app/lib/billing/stripe';
+import { applyPaidSession, readPaidSession, syncActiveSubscription } from '@/app/lib/server/subscription';
 
 function getAdminOrThrow() {
   const { client: admin } = getAdmin();
   if (!admin) throw new Error('Supabase admin neconfigurat (SUPABASE_SERVICE_ROLE_KEY).');
   return admin;
-}
-
-// Stripe poate returna fie id-ul (string), fie obiectul expandat
-function idOf(value: string | { id: string } | null | undefined): string | null {
-  if (!value) return null;
-  return typeof value === 'string' ? value : value.id;
-}
-
-// Setează planul + id-urile Stripe pentru un utilizator
-async function activatePlan(
-  userId: string,
-  tier: Tier,
-  customerId: string | null,
-  subscriptionId: string | null
-): Promise<{ previousSubscriptionId: string | null }> {
-  const admin = getAdminOrThrow();
-
-  const { data: current } = await admin
-    .from('profiles')
-    .select('stripe_subscription_id')
-    .eq('id', userId)
-    .maybeSingle();
-
-  const { data, error } = await admin
-    .from('profiles')
-    .update({
-      subscription_tier: tier,
-      ...(customerId ? { stripe_customer_id: customerId } : {}),
-      ...(subscriptionId ? { stripe_subscription_id: subscriptionId } : {}),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', userId)
-    .select('id');
-
-  if (error) throw new Error(`Actualizare profiles eșuată: ${error.message}`);
-  if (!data || data.length === 0) {
-    throw new Error(`Nu există rând în profiles pentru utilizatorul ${userId}.`);
-  }
-  console.log(`[SUCVAR] ${userId} -> ${tier}`);
-  return { previousSubscriptionId: current?.stripe_subscription_id ?? null };
 }
 
 // Coboară la 'starter' DOAR dacă abonamentul anulat este cel curent al utilizatorului.
@@ -67,6 +41,9 @@ async function downgradeBySubscription(subscriptionId: string): Promise<void> {
     .update({
       subscription_tier: 'starter',
       stripe_subscription_id: null,
+      current_period_end: null,
+      billing_interval: null,
+      cancel_at_period_end: false,
       updated_at: new Date().toISOString(),
     })
     .eq('stripe_subscription_id', subscriptionId)
@@ -110,53 +87,23 @@ export async function POST(request: Request) {
         const session = event.data.object as Stripe.Checkout.Session;
         if (session.payment_status !== 'paid') break;
 
-        const userId = session.client_reference_id ?? session.metadata?.user_id ?? null;
-        const plan = session.metadata?.plan;
-        if (!userId || !isPaidPlan(plan)) {
+        const paid = readPaidSession(session);
+        if (!paid) {
           console.error('[SUCVAR] checkout.session.completed fără user_id / plan valid:', session.id);
           break; // nu are sens să reîncercăm
         }
 
-        const customerId = idOf(session.customer as string | { id: string } | null);
-        const subscriptionId = idOf(session.subscription as string | { id: string } | null);
-
-        const { previousSubscriptionId } = await activatePlan(userId, plan, customerId, subscriptionId);
-
-        // Upgrade/schimbare de plan: anulăm abonamentul vechi ca să nu se factureze dublu.
-        if (previousSubscriptionId && subscriptionId && previousSubscriptionId !== subscriptionId) {
-          try {
-            await stripe.subscriptions.cancel(previousSubscriptionId);
-            console.log(`[SUCVAR] Abonament vechi anulat: ${previousSubscriptionId}`);
-          } catch (cancelError) {
-            console.error('[SUCVAR] Nu s-a putut anula abonamentul vechi:', cancelError);
-          }
-        }
+        // Aceeași funcție ca în /api/checkout/verify => aceleași coloane, idempotent
+        await applyPaidSession(stripe, session, paid);
         break;
       }
 
       case 'customer.subscription.updated': {
         const subscription = event.data.object as Stripe.Subscription;
-        const userId = subscription.metadata?.user_id;
-        const plan = subscription.metadata?.plan;
 
         if (subscription.status === 'active' || subscription.status === 'trialing') {
-          if (!userId || !isPaidPlan(plan)) break;
-
-          // Ignorăm actualizările unui abonament vechi, înlocuit de unul nou
-          const admin = getAdminOrThrow();
-          const { data: profile } = await admin
-            .from('profiles')
-            .select('stripe_subscription_id')
-            .eq('id', userId)
-            .maybeSingle();
-          if (profile?.stripe_subscription_id && profile.stripe_subscription_id !== subscription.id) break;
-
-          await activatePlan(
-            userId,
-            plan,
-            idOf(subscription.customer as string | { id: string } | null),
-            subscription.id
-          );
+          // Perioadă nouă / anulare programată / schimbare de ciclu
+          await syncActiveSubscription(subscription);
         } else if (
           subscription.status === 'canceled' ||
           subscription.status === 'unpaid' ||
@@ -165,6 +112,19 @@ export async function POST(request: Request) {
           await downgradeBySubscription(subscription.id);
         }
         // past_due / incomplete: Stripe reîncearcă plata, nu schimbăm planul încă
+        break;
+      }
+
+      case 'invoice.paid': {
+        // Reînnoirea (lunară/anuală) a fost plătită: abonamentul are o nouă current_period_end.
+        const invoice = event.data.object as Stripe.Invoice;
+        const ref = invoice.parent?.subscription_details?.subscription;
+        const subscriptionId = typeof ref === 'string' ? ref : ref?.id;
+        if (!subscriptionId) break; // factură fără abonament
+        const subscription = await stripe.subscriptions.retrieve(subscriptionId);
+        if (subscription.status === 'active' || subscription.status === 'trialing') {
+          await syncActiveSubscription(subscription);
+        }
         break;
       }
 

@@ -9,8 +9,8 @@ import { PLAN_LIMITS, isUnlimitedTier, normalizeTier } from '@/app/lib/plan/tier
 import { STORAGE_KEYS, readStorage, writeStorage } from '@/app/lib/storage';
 import { getSessionInfo } from '@/app/lib/supabase/auth';
 import { countProjectsThisMonth } from '@/app/lib/supabase/projects';
-import { fetchSubscriptionTier } from '@/app/lib/supabase/tier';
-import type { PlanTier } from '@/app/types';
+import { fetchSubscriptionInfo } from '@/app/lib/supabase/tier';
+import type { BillingInterval, PlanTier } from '@/app/types';
 
 export const PLAN_EVENT = 'sucvar-plan-change';
 const GUEST_BUCKET = '__guest__';
@@ -24,6 +24,12 @@ export interface PlanInfo {
   isPro: boolean;
   /** true doar pentru 'agency' (Enterprise B2B) */
   isAgency: boolean;
+  /** Ciclul de facturare ('month' | 'year'); null pentru starter / profil demo */
+  interval: BillingInterval | null;
+  /** Sfârșitul perioadei plătite (ISO); null dacă nu e cunoscut */
+  currentPeriodEnd: string | null;
+  /** true dacă abonamentul a fost anulat și expiră la finalul perioadei */
+  cancelAtPeriodEnd: boolean;
 }
 
 /** Emailuri administrator (opțional): NEXT_PUBLIC_ADMIN_EMAILS="a@x.com,b@y.com".
@@ -42,8 +48,13 @@ function buildPlan(
   email: string | null,
   isSignedIn: boolean,
   isDemo: boolean,
+  period: Partial<Pick<PlanInfo, 'interval' | 'currentPeriodEnd' | 'cancelAtPeriodEnd'>> = {},
 ): PlanInfo {
   return {
+    interval: null,
+    currentPeriodEnd: null,
+    cancelAtPeriodEnd: false,
+    ...period,
     tier,
     email,
     isSignedIn,
@@ -68,7 +79,9 @@ export async function resolvePlan(): Promise<PlanInfo> {
   // 1. Sesiune reală Supabase (email/parolă sau Google OAuth)
   const session = await getSessionInfo();
   if (session) {
-    return buildPlan(await fetchSubscriptionTier(), session.email, true, false);
+    // `tier` e deja „efectiv": un abonament expirat vine ca 'starter' (vezi supabase/tier.ts)
+    const sub = await fetchSubscriptionInfo();
+    return buildPlan(sub.tier, session.email, true, false, sub);
   }
 
   // 2. Profil demonstrativ (mod prezentare)

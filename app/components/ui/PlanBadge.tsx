@@ -87,7 +87,7 @@ export default function PlanBadge({ isDark, isRo }: PlanBadgeProps) {
   if (isPro) {
     return (
       <Link
-        href="/login"
+        href="/account"
         title={isRo ? 'Plan Professional — generări nelimitate' : 'Professional plan — unlimited generations'}
         className={`${base} bg-[#3B4D43] text-white opacity-90`}
       >

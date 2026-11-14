@@ -5,7 +5,7 @@
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
 import { VISUAL_STYLES } from '@/app/data/catalog';
-import { EYEBROW, getSkin } from '@/app/lib/theme/skin';
+import { EYEBROW, getSkin, swatchClass } from '@/app/lib/theme/skin';
 import type { Language } from '@/app/types';
 
 interface StylePickerProps {
@@ -49,7 +49,7 @@ export default function StylePicker({ lang, isDark, selectedStyleId, onSelect }:
     `w-full px-3 py-2.5 text-left text-xs flex items-center justify-between cursor-pointer touch-manipulation transition-colors ${
       active ? `${sk.segOn} font-semibold` : sk.rowHover
     }`;
-  const swatch = 'w-2.5 h-2.5 rounded-[2px] border border-white/15';
+  const swatch = swatchClass(isDark, 'sm');
 
   return (
   <section className={`border rounded-sm relative z-30 ${sk.card}`} ref={dropdownRef}>
@@ -57,13 +57,37 @@ export default function StylePicker({ lang, isDark, selectedStyleId, onSelect }:
       03 · {t('Stil arhitectural', 'Architectural style')}
     </div>
     <div className="p-4 space-y-3">
+      {/* Preseturi rapide: rând derulabil orizontal, ținte tactile ≥ 40px */}
+      <div className="scroll-row -mx-4 px-4 pb-1" role="group" aria-label={t('Preseturi de stil', 'Style presets')}>
+        {VISUAL_STYLES.map((v) => {
+          const active = v.id === selectedStyleId;
+          return (
+            <button
+              key={v.id}
+              type="button"
+              onClick={() => handleSelect(v.id)}
+              aria-pressed={active}
+              className={`group inline-flex h-10 items-center gap-2 rounded-sm border px-3 text-xs whitespace-nowrap cursor-pointer touch-manipulation active:scale-[0.97] transition-[background-color,border-color,transform] ${
+                active ? `${sk.segOn} ${isDark ? 'border-emerald-400/60' : 'border-emerald-600/70'}` : `${sk.line} ${sk.segOff}`
+              }`}
+            >
+              <span className="flex gap-0.5">
+                {v.colors.slice(0, 3).map((c) => (
+                  <span key={c} className={swatch} style={{ backgroundColor: c }} />
+                ))}
+              </span>
+              {lang === 'ro' ? v.nameRo : v.nameEn}
+            </button>
+          );
+        })}
+      </div>
       <div className="relative">
         <button
           type="button"
           onClick={() => setIsStyleMenuOpen((p) => !p)}
           aria-haspopup="listbox"
           aria-expanded={isStyleMenuOpen}
-          className={`w-full h-10 px-3 rounded-sm border flex items-center justify-between text-xs font-medium cursor-pointer touch-manipulation transition-colors ${sk.input}`}
+          className={`group w-full h-11 px-3 rounded-sm border flex items-center justify-between text-xs font-medium cursor-pointer touch-manipulation transition-colors ${sk.input}`}
         >
           <span className="flex items-center gap-3">
             <span>{styleName}</span>

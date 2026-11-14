@@ -9,8 +9,12 @@ import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Check, ShieldCheck } from 'lucide-react';
 import Navbar from '@/app/components/layout/Navbar';
 import { PRICING_PLANS, PricingPlan, getPlanById } from '@/app/data/catalog';
+import { usePlan } from '@/app/lib/plan/usePlan';
+import { canPurchase, normalizeInterval } from '@/app/lib/plan/tiers';
+import { displayPrice } from '@/app/lib/plan/pricing';
+import BillingToggle from '@/app/components/ui/BillingToggle';
 import { getAccessToken } from '@/app/lib/supabase/auth';
-import { STORAGE_KEYS } from '@/app/lib/storage';
+import { STORAGE_KEYS, writeStorage } from '@/app/lib/storage';
 import { getUi } from '@/app/lib/theme/tokens';
 import { usePrefs } from '@/app/lib/theme/usePrefs';
 import { useSearchString, useStoredValue } from '@/app/lib/useStoredValue';
@@ -19,6 +23,7 @@ export default function CheckoutPage() {
   const { lang, isDark } = usePrefs();
   const [isPaying, setIsPaying] = useState(false);
   const [payError, setPayError] = useState<string | null>(null);
+  const { tier: currentTier, interval: currentInterval, isSignedIn } = usePlan();
   const [needsLogin, setNeedsLogin] = useState(false);
 
   // Planul vine din adresă (?plan=pro); dacă lipsește, din planul salvat (aceeași cheie ca pe Home)
@@ -28,6 +33,10 @@ export default function CheckoutPage() {
   const plan: PricingPlan =
     getPlanById(params.get('plan')) ?? getPlanById(storedPlan) ?? PRICING_PLANS[1];
   const wasCanceled = params.get('canceled') === '1';
+  // Ciclul de facturare: ?interval=year|month, altfel ultima alegere de pe Home, altfel lunar
+  const storedInterval = useStoredValue(STORAGE_KEYS.billingInterval);
+  const interval = normalizeInterval(params.get('interval')) ?? normalizeInterval(storedInterval) ?? 'month';
+  const price = displayPrice(plan.priceCents, interval);
 
   const ui = getUi(isDark);
   const t = (textRo: string, textEn: string) => {
@@ -38,6 +47,13 @@ export default function CheckoutPage() {
   };
   const eyebrowClass = `text-[11px] uppercase tracking-[0.28em] ${ui.muted}`;
   const isFreePlan = plan.id === 'starter';
+  // Același plan + același ciclu sau plan inferior => nu se mai plătește. Excepție (upgrade):
+  // pro lunar -> pro anual / agency, agency lunar -> agency anual (oglindește /api/checkout).
+  const alreadyCovered =
+    isSignedIn &&
+    !isFreePlan &&
+    !canPurchase({ tier: currentTier, interval: currentInterval }, { tier: plan.id, interval });
+  const manageHref = currentTier === 'agency' ? '/b2b' : '/generate';
   const features = lang === 'ro' ? plan.featuresRo : plan.featuresEn;
 
   // Apelează /api/checkout și duce utilizatorul pe pagina de plată Stripe
@@ -64,7 +80,7 @@ export default function CheckoutPage() {
           'Content-Type': 'application/json',
           Authorization: `Bearer ${accessToken}`,
         },
-        body: JSON.stringify({ plan: plan.id }),
+        body: JSON.stringify({ plan: plan.id, interval }),
       });
       const data = await res.json().catch(() => ({}));
       if (!res.ok || typeof data.url !== 'string') {
@@ -94,9 +110,28 @@ export default function CheckoutPage() {
             <p className={`text-xs ${ui.muted}`}>{t(plan.descRo, plan.descEn)}</p>
           </div>
 
-          <div className="flex items-baseline gap-1">
-            <span className="text-4xl font-semibold">{plan.price}</span>
-            <span className={`text-xs ${ui.muted}`}>{t(plan.periodRo, plan.periodEn)}</span>
+          {!isFreePlan && (
+            <BillingToggle
+              value={interval}
+              onChange={(next) => writeStorage(STORAGE_KEYS.billingInterval, next)}
+              isRo={lang === 'ro'}
+              wrapClass={ui.line}
+              segOn="bg-[#141413] text-white"
+              segOff={`${ui.muted} hover:bg-stone-500/10`}
+            />
+          )}
+
+          <div className="space-y-1">
+            <div className="flex items-baseline gap-2">
+              {price.struck && <span className={`text-lg line-through ${ui.muted}`}>{price.struck}</span>}
+              <span className="text-4xl font-semibold">{price.main}</span>
+              <span className={`text-xs ${ui.muted}`}>{t(plan.periodRo, plan.periodEn)}</span>
+            </div>
+            {price.yearlyTotal && (
+              <p className={`text-xs ${ui.muted}`}>
+                {t(`Facturat anual: ${price.yearlyTotal} (−20%)`, `Billed annually: ${price.yearlyTotal} (−20%)`)}
+              </p>
+            )}
           </div>
 
           <ul className="space-y-3 text-sm">
@@ -125,13 +160,27 @@ export default function CheckoutPage() {
                     'You can start right away, no card needed. Open Studio and create your first project.'
                   )
                 : t(
-                    'Vei fi redirecționat către pagina securizată Stripe. Abonamentul se reînnoiește lunar și îl poți anula oricând.',
-                    'You will be redirected to the secure Stripe page. The subscription renews monthly and can be canceled anytime.'
+                    `Vei fi redirecționat către pagina securizată Stripe. Abonamentul se reînnoiește ${interval === 'year' ? 'anual' : 'lunar'} și îl poți anula oricând.`,
+                    `You will be redirected to the secure Stripe page. The subscription renews ${interval === 'year' ? 'annually' : 'monthly'} and can be canceled anytime.`
                   )}
             </p>
           </div>
 
-          {!isFreePlan && (
+          {alreadyCovered && (
+            <div role="status" className={`p-4 rounded-md text-sm leading-relaxed space-y-3 ${ui.soft}`}>
+              <p>
+                {currentTier === plan.id
+                  ? t('Ai deja acest plan activ. Nu este nevoie de o nouă plată.', 'You already have this plan active. No new payment is needed.')
+                  : t(`Planul tău curent (${currentTier}) include deja ${plan.nameRo}. Nu plăti de două ori.`, `Your current plan (${currentTier}) already includes ${plan.nameEn}. No need to pay twice.`)}
+              </p>
+              <Link href={manageHref} className={`inline-flex items-center gap-2 font-semibold underline ${ui.accent}`}>
+                {currentTier === 'agency' ? t('Mergi la portalul B2B', 'Go to the B2B portal') : t('Mergi la Studio', 'Go to Studio')}
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            </div>
+          )}
+
+          {!isFreePlan && !alreadyCovered && (
             <div className={`p-4 rounded-md flex items-start gap-3 text-xs leading-relaxed ${ui.soft}`}>
               <ShieldCheck className={`w-4 h-4 mt-0.5 shrink-0 ${ui.accent}`} />
               <p>
@@ -143,7 +192,7 @@ export default function CheckoutPage() {
             </div>
           )}
 
-          {wasCanceled && !isFreePlan && (
+          {wasCanceled && !isFreePlan && !alreadyCovered && (
             <p className={`text-xs ${ui.muted}`}>
               {t('Plata a fost anulată. Nu ai fost taxat.', 'The payment was canceled. You were not charged.')}
             </p>
@@ -164,7 +213,7 @@ export default function CheckoutPage() {
                 <span>{t('Începe gratuit', 'Start for free')}</span>
                 <ArrowRight className="w-4 h-4" />
               </Link>
-            ) : (
+            ) : alreadyCovered ? null : (
               <button
                 type="button"
                 onClick={handlePay}

@@ -1,12 +1,20 @@
 // app/api/checkout/route.ts
-// Creează o sesiune Stripe Checkout (abonament lunar) pentru utilizatorul autentificat
+// Creează o sesiune Stripe Checkout (abonament lunar sau anual) pentru utilizatorul autentificat
 // și returnează URL-ul paginii de plată Stripe.
 //
 // Securitate: utilizatorul (id + email) este luat din token-ul Supabase, NU din body.
 // Altfel oricine ar putea declanșa plăți pe numele altui cont.
 import { NextResponse } from 'next/server';
 import { getAdmin } from '@/app/lib/supabase/admin';
-import { PAID_PLANS, PLAN_CURRENCY, getStripe, isPaidPlan } from '@/app/lib/billing/stripe';
+import { canPurchase, normalizeInterval, resolveEffectiveTier } from '@/app/lib/plan/tiers';
+import {
+  PAID_PLANS,
+  PLAN_CURRENCY,
+  configuredPriceId,
+  getStripe,
+  isPaidPlan,
+  unitAmountFor,
+} from '@/app/lib/billing/stripe';
 
 function fail(status: number, code: string, error: string) {
   return NextResponse.json({ error, code }, { status });
@@ -41,21 +49,46 @@ export async function POST(request: Request) {
 
     // 2. Planul cerut (doar 'pro' sau 'agency')
     const body: unknown = await request.json().catch(() => null);
-    const requested =
-      typeof body === 'object' && body !== null ? (body as { plan?: unknown }).plan : null;
-    if (!isPaidPlan(requested)) {
+    const fields =
+      typeof body === 'object' && body !== null ? (body as { plan?: unknown; interval?: unknown }) : {};
+    if (!isPaidPlan(fields.plan)) {
       return fail(400, 'INVALID_PLAN', 'Plan invalid.');
     }
-    const plan = requested;
+    const plan = fields.plan;
+    // Ciclul de facturare: lipsă => lunar (compatibil cu clienții vechi); orice altceva => 400
+    const interval = fields.interval === undefined ? 'month' : normalizeInterval(fields.interval);
+    if (!interval) {
+      return fail(400, 'INVALID_INTERVAL', 'Ciclu de facturare invalid (month | year).');
+    }
 
     // 3. Nu vindem același plan de două ori; refolosim clientul Stripe existent
     const { data: profile } = await admin
       .from('profiles')
-      .select('subscription_tier, stripe_customer_id')
+      .select('subscription_tier, stripe_customer_id, current_period_end, billing_interval')
       .eq('id', user.id)
       .maybeSingle();
-    if (profile?.subscription_tier === plan) {
-      return fail(409, 'ALREADY_SUBSCRIBED', 'Ai deja acest plan activ.');
+    // Planul curent se calculează „efectiv": un abonament expirat (current_period_end < acum)
+    // devine 'starter', deci utilizatorul îl poate cumpăra din nou.
+    // Gardă (pe server, nu poate fi ocolită din UI) — vezi canPurchase în tiers.ts:
+    //   pro lunar -> pro anual / agency;  agency lunar -> agency anual;
+    //   același plan + același ciclu sau un plan inferior => 409.
+    // Upgrade-ul refolosește `stripe_customer_id`, fără client Stripe duplicat; abonamentul vechi
+    // e anulat după plată (applyPaidSession), deci nu se facturează dublu.
+    const currentTier = resolveEffectiveTier(profile?.subscription_tier, profile?.current_period_end);
+    const currentInterval = normalizeInterval(profile?.billing_interval);
+    if (!canPurchase({ tier: currentTier, interval: currentInterval }, { tier: plan, interval })) {
+      const same = currentTier === plan;
+      return NextResponse.json(
+        {
+          code: same ? 'ALREADY_SUBSCRIBED' : 'PLAN_INCLUDED',
+          error: same
+            ? 'Ai deja acest plan activ (sau unul anual echivalent). / You already have this plan active.'
+            : `Planul tău curent (${currentTier}) îl include deja pe ${plan}. / Your current plan (${currentTier}) already includes ${plan}.`,
+          currentTier,
+          redirect: currentTier === 'agency' ? '/b2b' : '/generate',
+        },
+        { status: 409 }
+      );
     }
 
     // 4. Sesiunea Stripe Checkout
@@ -66,8 +99,9 @@ export async function POST(request: Request) {
     ).replace(/\/$/, '');
 
     const details = PAID_PLANS[plan];
+    const priceId = configuredPriceId(plan, interval);
     // Aceleași metadate pe sesiune ȘI pe abonament: webhook-ul le citește din amândouă
-    const metadata = { user_id: user.id, plan };
+    const metadata = { user_id: user.id, plan, interval };
 
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
@@ -76,21 +110,28 @@ export async function POST(request: Request) {
         ? { customer: profile.stripe_customer_id as string }
         : { customer_email: user.email }),
       client_reference_id: user.id,
+      // Price ID din env, dacă e configurat; altfel `price_data` dinamic cu intervalul recurent
+      // ales (month | year). Anualul = 12 luni − 20%, facturat o dată pe an.
       line_items: [
-        {
-          quantity: 1,
-          price_data: {
-            currency: PLAN_CURRENCY,
-            unit_amount: details.unitAmount,
-            recurring: { interval: 'month' },
-            product_data: { name: details.name },
-          },
-        },
+        priceId
+          ? { price: priceId, quantity: 1 }
+          : {
+              quantity: 1,
+              price_data: {
+                currency: PLAN_CURRENCY,
+                unit_amount: unitAmountFor(plan, interval),
+                recurring: { interval },
+                product_data: {
+                  name: interval === 'year' ? `${details.name} (anual)` : details.name,
+                },
+              },
+            },
       ],
       metadata,
       subscription_data: { metadata },
-      success_url: `${siteUrl}/generate?payment=success`,
-      cancel_url: `${siteUrl}/checkout?plan=${plan}&canceled=1`,
+      // {CHECKOUT_SESSION_ID} e înlocuit de Stripe; pagina de succes îl trimite la /api/checkout/verify
+      success_url: `${siteUrl}/checkout/success?session_id={CHECKOUT_SESSION_ID}`,
+      cancel_url: `${siteUrl}/checkout?plan=${plan}&interval=${interval}&canceled=1`,
     });
 
     if (!session.url) {

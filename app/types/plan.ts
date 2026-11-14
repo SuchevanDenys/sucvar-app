@@ -6,3 +6,6 @@ export type PlanTier = 'starter' | 'pro' | 'agency';
 
 /** Tariff plan shown on Home and /checkout (same set as the account tier). */
 export type PlanId = PlanTier;
+
+/** Ciclu de facturare Stripe: lunar (`month`) sau anual (`year`, cu reducere). */
+export type BillingInterval = 'month' | 'year';

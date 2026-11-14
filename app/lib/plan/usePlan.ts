@@ -14,7 +14,7 @@ import {
   resolvePlan,
   type PlanInfo,
 } from '@/app/lib/plan/client';
-import type { PlanTier } from '@/app/types';
+import type { BillingInterval, PlanTier } from '@/app/types';
 
 export interface UsePlan {
   tier: PlanTier;
@@ -23,6 +23,9 @@ export interface UsePlan {
   isSignedIn: boolean;
   isDemo: boolean;
   isLoading: boolean;
+  interval: BillingInterval | null; // ciclul de facturare al abonamentului
+  currentPeriodEnd: string | null; // sfârșitul perioadei plătite (ISO)
+  cancelAtPeriodEnd: boolean; // anulat, expiră la finalul perioadei
   used: number; // generări în luna curentă (0 pentru planuri plătite)
   limit: number; // limita lunară a planului gratuit
   remaining: number; // Infinity pentru planuri plătite
@@ -76,6 +79,9 @@ export function usePlan(): UsePlan {
     isSignedIn: info.isSignedIn,
     isDemo: info.isDemo,
     isLoading,
+    interval: info.interval,
+    currentPeriodEnd: info.currentPeriodEnd,
+    cancelAtPeriodEnd: info.cancelAtPeriodEnd,
     used,
     limit,
     remaining: isPro ? Number.POSITIVE_INFINITY : Math.max(0, limit - used),

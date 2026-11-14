@@ -13,6 +13,7 @@ export const STORAGE_KEYS = {
   projects: 'sucvar_projects',
   activeProject: 'sucvar_active_project',
   selectedPlan: 'sucvar_selected_plan',
+  billingInterval: 'sucvar_billing_interval',
   preferredStyle: 'sucvar_preferred_style',
   b2bWorkspaces: 'sucvar_b2b_workspaces', // B2B: date client + deviz per proiect
   b2bSeller: 'sucvar_b2b_seller', // B2B: datele firmei de construcții (furnizor)

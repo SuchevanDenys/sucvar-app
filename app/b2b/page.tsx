@@ -24,6 +24,8 @@ import {
 } from 'lucide-react';
 import Navbar from '@/app/components/layout/Navbar';
 import { useEnterpriseAccess } from '@/app/lib/plan/useEnterpriseAccess';
+import { usePlan } from '@/app/lib/plan/usePlan';
+import { SubscriptionBadge } from '@/app/components/ui/SubscriptionCard';
 import { usePrefs } from '@/app/lib/theme/usePrefs';
 import { useClientDate } from '@/app/lib/useStoredValue';
 import {
@@ -71,6 +73,7 @@ export default function B2BPage() {
   const eyebrow = `${EYEBROW} ${sk.dim}`;
 
   const access = useEnterpriseAccess();
+  const subscription = usePlan(); // ciclu + zile rămase pentru badge-ul de abonament
   const email = access.email; // inclusiv profilurile demo (sesiune reală sau demo)
 
   // ── Portofoliu: proiecte salvate ale contului ───────────────────────────
@@ -283,6 +286,7 @@ export default function B2BPage() {
               {t('Spațiu de lucru pentru antreprenori', 'Contractor workspace')}
             </h1>
             {email && <p className={`font-mono text-xs ${sk.dim}`}>{email}</p>}
+            <SubscriptionBadge plan={subscription} isRo={isRo} className={sk.dim} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
             <button type="button" onClick={exportCsv} className={`inline-flex items-center gap-2 h-10 px-4 rounded-sm ${EYEBROW} cursor-pointer touch-manipulation transition-colors ${sk.btnGhost}`}>

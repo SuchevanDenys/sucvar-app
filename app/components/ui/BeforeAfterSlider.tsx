@@ -20,7 +20,7 @@ export default function BeforeAfterSlider({
   const [pos, setPos] = useState<number>(50);
 
   return (
-    <div className="relative w-full h-[360px] sm:h-[480px] rounded-md overflow-hidden select-none bg-[#141413] border border-stone-300/40 z-10">
+    <div className="relative w-full h-[320px] sm:h-[480px] rounded-[2px] overflow-hidden select-none bg-[#141413] border border-white/10 z-10 [&:has(:focus-visible)]:ring-1 [&:has(:focus-visible)]:ring-emerald-400">
       {/* Layer 1: "after" image fills the whole frame */}
       <img
         src={afterImg}
@@ -44,16 +44,16 @@ export default function BeforeAfterSlider({
         className="absolute inset-y-0 w-9 -translate-x-1/2 pointer-events-none z-20"
       >
         <div className="absolute inset-y-0 left-1/2 w-px -translate-x-1/2 bg-white shadow-[0_0_10px_rgba(0,0,0,0.6)]" />
-        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-9 h-9 rounded-full bg-[#141413] border border-white flex items-center justify-center shadow-lg">
+        <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 w-10 h-10 rounded-full bg-[#09090B]/90 backdrop-blur-sm border border-white/80 flex items-center justify-center shadow-[0_4px_16px_rgba(0,0,0,0.5)] ring-4 ring-black/20">
           <MoveHorizontal className="w-4 h-4 text-white" />
         </div>
       </div>
 
       {/* Labels */}
-      <span className="absolute top-3 left-3 z-20 bg-black/70 backdrop-blur-sm text-white text-[10px] font-semibold uppercase tracking-widest px-2.5 py-1 rounded-sm pointer-events-none">
+      <span className="absolute top-3 left-3 z-20 bg-black/70 border border-white/10 backdrop-blur-sm text-white text-[10px] font-mono uppercase tracking-[0.18em] px-2.5 py-1 rounded-[2px] pointer-events-none">
         {beforeLabel}
       </span>
-      <span className="absolute top-3 right-3 z-20 bg-[#3B4D43] text-white text-[10px] font-semibold uppercase tracking-widest px-2.5 py-1 rounded-sm pointer-events-none">
+      <span className="absolute top-3 right-3 z-20 bg-emerald-900/90 border border-emerald-400/30 backdrop-blur-sm text-emerald-50 text-[10px] font-mono uppercase tracking-[0.18em] px-2.5 py-1 rounded-[2px] pointer-events-none">
         {afterLabel}
       </span>
 

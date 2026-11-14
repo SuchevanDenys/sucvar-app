@@ -48,9 +48,9 @@ export function getSkin(isDark: boolean): Skin {
       accent: 'text-emerald-400',
       input:
         'bg-zinc-950/60 border-white/[0.08] text-zinc-100 placeholder:text-zinc-600 hover:border-white/[0.16] focus:border-emerald-400/60 focus:outline-none focus:ring-0',
-      btn: 'bg-zinc-100 text-zinc-950 hover:bg-white border border-transparent',
+      btn: 'bg-zinc-100 text-zinc-950 hover:bg-white active:scale-[0.98] active:bg-zinc-200 border border-transparent shadow-[0_1px_0_rgba(255,255,255,0.5)_inset,0_1px_2px_rgba(0,0,0,0.5)] transition-[background-color,transform,box-shadow]',
       btnGhost:
-        'border border-white/[0.1] text-zinc-300 hover:bg-white/[0.04] hover:text-white hover:border-white/[0.18]',
+        'border border-white/[0.1] text-zinc-300 hover:bg-white/[0.04] hover:text-white hover:border-white/[0.18] active:scale-[0.98] active:bg-white/[0.07] transition-[background-color,border-color,color,transform]',
       segOn: 'bg-white/[0.09] text-white',
       segOff: 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.03]',
       option: 'bg-zinc-900 text-zinc-100',
@@ -69,13 +69,13 @@ export function getSkin(isDark: boolean): Skin {
     divide: 'divide-black/[0.07]',
     strong: 'text-zinc-950',
     muted: 'text-zinc-600',
-    dim: 'text-zinc-500',
+    dim: 'text-zinc-600/90',
     accent: 'text-emerald-700',
     input:
       'bg-white border-black/[0.1] text-zinc-900 placeholder:text-zinc-400 hover:border-black/[0.22] focus:border-emerald-600/70 focus:outline-none focus:ring-0',
-    btn: 'bg-zinc-950 text-white hover:bg-zinc-800 border border-transparent',
+    btn: 'bg-zinc-950 text-white hover:bg-zinc-800 active:scale-[0.98] active:bg-zinc-900 border border-transparent shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_1px_2px_rgba(0,0,0,0.25)] transition-[background-color,transform,box-shadow]',
     btnGhost:
-      'border border-black/[0.12] text-zinc-700 hover:bg-black/[0.04] hover:text-zinc-950 hover:border-black/[0.22]',
+      'border border-black/[0.12] text-zinc-700 hover:bg-black/[0.04] hover:text-zinc-950 hover:border-black/[0.22] active:scale-[0.98] active:bg-black/[0.07] transition-[background-color,border-color,color,transform]',
     segOn: 'bg-black/[0.07] text-zinc-950',
     segOff: 'text-zinc-500 hover:text-zinc-900 hover:bg-black/[0.03]',
     option: 'bg-white text-zinc-900',
@@ -95,3 +95,12 @@ export function ruleClass(isDark: boolean): string {
   return isDark ? 'bg-white/[0.18]' : 'bg-black/[0.2]';
 }
 
+
+/** Eșantion de culoare tactil: margine fină + inel interior pentru contrast pe orice fundal. */
+export function swatchClass(isDark: boolean, size: 'sm' | 'md' = 'md'): string {
+  const dim = size === 'sm' ? 'w-2.5 h-2.5' : 'w-4 h-4';
+  const ring = isDark
+    ? 'border-white/20 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.35)]'
+    : 'border-black/15 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.4)]';
+  return `${dim} rounded-[2px] border ${ring} transition-transform duration-200 group-hover:scale-110`;
+}

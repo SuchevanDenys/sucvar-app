@@ -16,16 +16,23 @@ import { PRICING_PLANS, VISUAL_STYLES } from '@/app/data/catalog';
 import { HERO_STATS, CASES, SAMPLE_QUERY, SAMPLE_PARAMS, SUPPLIERS, LOOP_STEPS, STEPS, NORMS, FORMULAS } from '@/app/data/home';
 import CaseCard from '@/app/components/home/CaseCard';
 import Footer from '@/app/components/layout/Footer';
-import { getSkin, EYEBROW, CONTAINER, ruleClass } from '@/app/lib/theme/skin';
+import { getSkin, EYEBROW, CONTAINER, ruleClass, swatchClass } from '@/app/lib/theme/skin';
 import { LiveDot, Corners, Frame, SectionHeading } from '@/app/components/ui/Editorial';
 import { STORAGE_KEYS, writeStorage } from '@/app/lib/storage';
 import { usePrefs } from '@/app/lib/theme/usePrefs';
+import { usePlan } from '@/app/lib/plan/usePlan';
+import { canPurchase, normalizeInterval } from '@/app/lib/plan/tiers';
+import { displayPrice } from '@/app/lib/plan/pricing';
+import BillingToggle from '@/app/components/ui/BillingToggle';
 import { useStoredValue } from '@/app/lib/useStoredValue';
 
 export default function HomePage() {
   // ---------- State ----------
   const { lang, isDark } = usePrefs();
+  const { tier: currentTier, interval: currentInterval, isSignedIn } = usePlan();
   const selectedPlan = useStoredValue(STORAGE_KEYS.selectedPlan) || 'pro';
+  // Ciclul de facturare ales (lunar / anual −20%), păstrat și pentru pagina de checkout
+  const interval = normalizeInterval(useStoredValue(STORAGE_KEYS.billingInterval)) ?? 'month';
 
   // ---------- Helpers ----------
   const sk = getSkin(isDark);
@@ -35,10 +42,14 @@ export default function HomePage() {
   const groupHoverAccent = isDark ? 'group-hover:text-emerald-400' : 'group-hover:text-emerald-700';
   const groupHoverStrong = isDark ? 'group-hover:text-white' : 'group-hover:text-zinc-950';
   const sectionY = `border-t py-28 lg:py-40 ${sk.line}`;
-  const btnBase = 'inline-flex items-center justify-center gap-2 h-11 px-6 rounded-sm text-[13px] font-medium transition-colors touch-manipulation';
+  const btnBase = 'inline-flex items-center justify-center gap-2 h-12 sm:h-11 px-6 rounded-sm text-[13px] font-medium touch-manipulation select-none';
 
   const handleSelectPlan = (planId: string) => {
     writeStorage(STORAGE_KEYS.selectedPlan, planId);
+  };
+
+  const handleSelectInterval = (next: string) => {
+    writeStorage(STORAGE_KEYS.billingInterval, next);
   };
 
   const handleStyleClick = (styleId: string) => {
@@ -364,7 +375,7 @@ export default function HomePage() {
                     href="/generate"
                     key={style.id}
                     onClick={() => handleStyleClick(style.id)}
-                    className={`group p-5 sm:p-6 space-y-3 transition-colors duration-500 touch-manipulation ${sk.cell} ${sk.rowHover}`}
+                    className={`group p-5 sm:p-6 space-y-3 transition-colors duration-500 touch-manipulation active:brightness-95 ${sk.cell} ${sk.rowHover}`}
                   >
                     <div className="flex items-center justify-between">
                       <span className={`font-mono text-[10px] tabular-nums ${sk.dim}`}>{String(i + 1).padStart(2, '0')}</span>
@@ -376,7 +387,7 @@ export default function HomePage() {
                       {style.colors.map((hexColor) => (
                         <span
                           key={hexColor}
-                          className="w-3.5 h-3.5 rounded-[2px] border border-white/10"
+                          className={swatchClass(isDark, 'md')}
                           style={{ backgroundColor: hexColor }}
                         />
                       ))}
@@ -402,11 +413,34 @@ export default function HomePage() {
             </Reveal>
 
             <Reveal delay={100}>
-              <div className={`mt-16 grid grid-cols-1 lg:grid-cols-3 gap-px border ${sk.line} ${sk.gap}`}>
+              <div className="mt-12 flex justify-start">
+                <BillingToggle
+                  value={interval}
+                  onChange={handleSelectInterval}
+                  isRo={lang === 'ro'}
+                  wrapClass={sk.line}
+                  segOn={sk.segOn}
+                  segOff={sk.segOff}
+                />
+              </div>
+              <div className={`mt-6 grid grid-cols-1 lg:grid-cols-3 gap-px border ${sk.line} ${sk.gap}`}>
                 {PRICING_PLANS.map((plan, idx) => {
                   const isSelected = selectedPlan === plan.id;
                   const features = lang === 'ro' ? plan.featuresRo : plan.featuresEn;
                   const buttonClass = isSelected ? sk.btn : sk.btnGhost;
+                  // Rang plan: cardul activ / inclus în planul curent nu se mai poate cumpăra
+                  // Gardă (oglindește serverul): se poate cumpăra doar o îmbunătățire —
+                  // pro lunar -> pro anual / agency, agency lunar -> agency anual.
+                  const purchasable =
+                    plan.id !== 'starter' &&
+                    canPurchase({ tier: currentTier, interval: currentInterval }, { tier: plan.id, interval });
+                  const isActive = isSignedIn && plan.id === currentTier && !purchasable;
+                  const isIncluded = isSignedIn && !isActive && plan.id !== currentTier && !purchasable;
+                  const isLocked = isActive || isIncluded;
+                  const price = displayPrice(plan.priceCents, interval);
+                  const lockedText = isActive
+                    ? t('Plan Activ', 'Active Plan')
+                    : t(`Inclus în ${currentTier === 'agency' ? 'Agency' : 'Pro'}`, `Included in ${currentTier === 'agency' ? 'Agency' : 'Pro'}`);
                   const buttonText = isSelected ? t('Continuă cu acest plan', 'Continue with this plan') : t('Alege planul', 'Choose plan');
 
                   return (
@@ -423,7 +457,7 @@ export default function HomePage() {
                       }`}
                     >
                       {isSelected && (
-                        <span aria-hidden className={`absolute inset-x-0 top-0 h-px ${isDark ? 'bg-white' : 'bg-zinc-950'}`} />
+                        <span aria-hidden className={`absolute inset-x-0 top-0 h-px ${isDark ? 'bg-emerald-400' : 'bg-emerald-700'}`} />
                       )}
 
                       <div>
@@ -439,17 +473,36 @@ export default function HomePage() {
                         <p className={`mt-2 min-h-10 text-sm ${sk.muted}`}>{t(plan.descRo, plan.descEn)}</p>
 
                         <div className="mt-8 flex items-baseline gap-2">
-                          <span className={`font-mono text-5xl tabular-nums tracking-[-0.04em] ${sk.strong}`}>{plan.price}</span>
+                          {price.struck && (
+                            <span className={`font-mono text-xl tabular-nums line-through ${sk.dim}`}>{price.struck}</span>
+                          )}
+                          <span className={`font-mono text-5xl tabular-nums tracking-[-0.04em] ${sk.strong}`}>{price.main}</span>
                           <span className={`${EYEBROW} ${sk.dim}`}>{t(plan.periodRo, plan.periodEn)}</span>
                         </div>
+                        {/* Totalul anual: se vede clar cât se facturează o dată pe an */}
+                        {price.yearlyTotal && (
+                          <p className={`mt-2 text-xs ${sk.muted}`}>
+                            {t(`Facturat anual: ${price.yearlyTotal}`, `Billed annually: ${price.yearlyTotal}`)}
+                          </p>
+                        )}
                       </div>
 
                       <div>
-                        {isSelected ? (
-                          <Link
-                            href={`/checkout?plan=${plan.id}`}
+                        {isLocked ? (
+                          <button
+                            type="button"
+                            disabled
+                            aria-disabled
                             onClick={(event) => event.stopPropagation()}
-                            className={`mt-8 h-11 w-full flex items-center justify-center rounded-sm text-[13px] font-medium transition-colors touch-manipulation ${buttonClass}`}
+                            className={`mt-8 h-12 sm:h-11 w-full flex items-center justify-center rounded-sm text-[13px] font-medium opacity-60 cursor-not-allowed ${sk.btnGhost}`}
+                          >
+                            {lockedText}
+                          </button>
+                        ) : isSelected ? (
+                          <Link
+                            href={`/checkout?plan=${plan.id}&interval=${interval}`}
+                            onClick={(event) => event.stopPropagation()}
+                            className={`mt-8 h-12 sm:h-11 w-full flex items-center justify-center rounded-sm text-[13px] font-medium touch-manipulation ${buttonClass}`}
                           >
                             {buttonText}
                           </Link>
@@ -460,7 +513,7 @@ export default function HomePage() {
                               event.stopPropagation();
                               handleSelectPlan(plan.id);
                             }}
-                            className={`mt-8 h-11 w-full flex items-center justify-center rounded-sm text-[13px] font-medium cursor-pointer transition-colors touch-manipulation ${buttonClass}`}
+                            className={`mt-8 h-12 sm:h-11 w-full flex items-center justify-center rounded-sm text-[13px] font-medium cursor-pointer touch-manipulation ${buttonClass}`}
                           >
                             {buttonText}
                           </button>

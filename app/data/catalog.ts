@@ -484,6 +484,8 @@ export interface PricingPlan {
   nameRo: string;
   nameEn: string;
   price: string;
+  /** Prețul lunar în cenți (baza pentru calculul anual cu −20%; ține-l sincron cu PAID_PLANS) */
+  priceCents: number;
   periodRo: string;
   periodEn: string;
   descRo: string;
@@ -499,6 +501,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     nameRo: 'Studio (gratuit)',
     nameEn: 'Studio (free)',
     price: '0 €',
+    priceCents: 0,
     periodRo: '/ lună',
     periodEn: '/ month',
     descRo: 'Pentru o singură cameră sau un proiect personal.',
@@ -522,6 +525,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     nameRo: 'Professional',
     nameEn: 'Professional',
     price: '29 €',
+    priceCents: 2900,
     periodRo: '/ lună',
     periodEn: '/ month',
     descRo: 'Pentru designeri, agenți imobiliari și firme de amenajări.',
@@ -549,6 +553,7 @@ export const PRICING_PLANS: PricingPlan[] = [
     nameRo: 'Business',
     nameEn: 'Business',
     price: '79 €',
+    priceCents: 7900,
     periodRo: '/ lună',
     periodEn: '/ month',
     descRo: 'Pentru dezvoltatori imobiliari și birouri de arhitectură.',

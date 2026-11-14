@@ -6,7 +6,7 @@
 //   • mesaje de configurare clare (ce variabilă lipsește)
 import type { SupabaseClient } from '@supabase/supabase-js';
 import { getAdmin } from '@/app/lib/supabase/admin';
-import { PLAN_LIMITS, isUnlimitedTier, normalizeTier } from '@/app/lib/plan/tiers';
+import { PLAN_LIMITS, isUnlimitedTier, resolveEffectiveTier } from '@/app/lib/plan/tiers';
 import type { PlanTier } from '@/app/types';
 
 export type ServerTier = PlanTier;
@@ -127,7 +127,7 @@ export async function checkGenerationQuota(request: Request): Promise<QuotaResul
   // 3. Planul din `profiles`
   const { data: profile, error: profileError } = await admin
     .from('profiles')
-    .select('subscription_tier')
+    .select('subscription_tier, current_period_end')
     .eq('id', userId)
     .maybeSingle();
 
@@ -136,7 +136,9 @@ export async function checkGenerationQuota(request: Request): Promise<QuotaResul
     console.error('[SUCVAR] Citire profiles eșuată:', profileError.message);
   }
 
-  const tier = normalizeTier(profile?.subscription_tier);
+  // Abonament plătit expirat (current_period_end < acum) => 'starter', chiar dacă webhook-ul
+  // de anulare nu a ajuns încă. Fără dată (conturi vechi) planul rămâne neschimbat.
+  const tier = resolveEffectiveTier(profile?.subscription_tier, profile?.current_period_end);
 
   // 'pro' și 'agency' => nelimitat (doar 'starter' are limita lunară)
   if (isUnlimitedTier(tier)) {

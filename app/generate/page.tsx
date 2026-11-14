@@ -41,7 +41,7 @@ import {
   MAX_PHOTO_BYTES,
   type NumberField,
 } from '@/app/lib/studio/constants';
-import { PhotoError, resizePhoto, toPermanentDataUrl, sleep } from '@/app/lib/studio/images';
+import { PhotoError, resizePhoto, toPermanentDataUrl } from '@/app/lib/studio/images';
 import {
   DIMENSION_LIMITS,
   getHeightLimits,
@@ -99,7 +99,6 @@ export default function StudioPage() {
   const [saveMessage, setSaveMessage] = useState<string | null>(null);
   const [providerNote, setProviderNote] = useState<string | null>(null);
   const [gateCode, setGateCode] = useState<'LIMIT_REACHED' | 'AUTH_REQUIRED' | null>(null);
-  const [paymentSync, setPaymentSync] = useState<'checking' | 'active' | 'pending' | null>(null);
   const [isSaving, setIsSaving] = useState(false); // blochează dublu-click pe „Salvează"
   const [isPhotoLoading, setIsPhotoLoading] = useState(false); // citire + redimensionare foto
 
@@ -182,39 +181,6 @@ export default function StudioPage() {
 
   useEffect(() => () => { if (loadingTimerRef.current) clearInterval(loadingTimerRef.current); }, []);
 
-  // După plata Stripe (?payment=success sau ?success=true): webhook-ul poate întârzia
-  // câteva secunde, deci reîmprospătăm planul până apare tier-ul plătit (max ~15 s).
-  useEffect(() => {
-    const params = new URLSearchParams(window.location.search);
-    const returned = params.get('payment') === 'success' || params.get('success') === 'true';
-    if (!returned) return;
-
-    let cancelled = false;
-    // eslint-disable-next-line react-hooks/set-state-in-effect -- one-shot UI state after returning from Stripe
-    setPaymentSync('checking');
-
-    (async () => {
-      let activated = false;
-      for (let attempt = 0; attempt < 10 && !cancelled; attempt += 1) {
-        const current = await resolvePlan();
-        await refreshPlanRef.current();
-        if (current.tier !== 'starter') {
-          activated = true;
-          break;
-        }
-        await sleep(1500);
-      }
-      if (cancelled) return;
-      setPaymentSync(activated ? 'active' : 'pending');
-      // Curățăm parametrul din URL (după finalizare, ca să reziste și la Strict Mode)
-      window.history.replaceState(null, '', window.location.pathname);
-    })();
-
-    return () => {
-      cancelled = true;
-    };
-  }, []);
-
   // ── Calcule derivate ──────────────────────────────────────────────────────
   const sk = getSkin(isDark);
   const t = (ro: string, en: string) => (lang === 'ro' ? ro : en);
@@ -273,7 +239,7 @@ export default function StudioPage() {
   const eyebrow = `${EYEBROW} ${sk.dim}`;
   const fieldCls = `w-full h-10 px-3 rounded-sm border text-xs font-mono outline-none transition-colors ${sk.input}`;
   const seg = (active: boolean) =>
-    `flex-1 h-9 px-3 ${EYEBROW} cursor-pointer touch-manipulation transition-colors ${active ? sk.segOn : sk.segOff}`;
+    `flex-1 h-10 px-3 ${EYEBROW} cursor-pointer touch-manipulation transition-colors ${active ? sk.segOn : sk.segOff}`;
   const textareaCls = `w-full px-3 py-2 rounded-sm border text-xs font-mono outline-none transition-colors resize-y min-h-[72px] ${sk.input}`;
 
   // ── Handlers ───────────────────────────────────────────────────────────────
@@ -618,22 +584,6 @@ export default function StudioPage() {
               <h1 className={`text-2xl font-semibold tracking-tight mt-2 ${sk.strong}`}>
                 {t('Proiect nou', 'New project')}
               </h1>
-              {paymentSync && (
-                <p
-                  role="status"
-                  className={`mt-3 text-xs font-mono ${paymentSync === 'pending' ? 'text-amber-500' : sk.accent}`}
-                >
-                  {paymentSync === 'checking' &&
-                    t('Se confirmă plata și se activează planul…', 'Confirming payment and activating your plan…')}
-                  {paymentSync === 'active' &&
-                    t('Plata a fost confirmată. Planul tău este activ.', 'Payment confirmed. Your plan is active.')}
-                  {paymentSync === 'pending' &&
-                    t(
-                      'Plata este în procesare. Planul se va activa în câteva momente; reîncarcă pagina dacă nu se actualizează.',
-                      'Payment is processing. Your plan will activate shortly; reload the page if it does not update.',
-                    )}
-                </p>
-              )}
             </div>
 
             {/* 01 · Tip de spațiu */}
@@ -820,7 +770,7 @@ export default function StudioPage() {
                   type="button"
                   onClick={handleGenerate}
                   disabled={!originalImage || isLoading || isPhotoLoading || plan.limitReached || dimensionIssues.length > 0}
-                  className={`w-full h-11 rounded-sm font-semibold transition-colors disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer touch-manipulation ${EYEBROW} ${sk.btn}`}
+                  className={`w-full h-12 sm:h-11 rounded-sm font-semibold disabled:opacity-40 disabled:cursor-not-allowed cursor-pointer touch-manipulation ${EYEBROW} ${sk.btn}`}
                 >
                   {isLoading
                     ? <span className="flex items-center justify-center gap-2.5">
