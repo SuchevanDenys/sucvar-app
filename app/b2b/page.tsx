@@ -5,6 +5,10 @@
 //   • Domain data + pure helpers live in app/lib/b2b/estimate.ts.
 //   • Labor matrix (4 trades × regional hourly rates), crew scheduling, contingency + margin sliders.
 //   • Itemised lines (templates from v3), CSV export, Factur-X (CII / EN 16931) XML export, print/PDF.
+//   • Portofoliu: proiectele salvate ale contului → date client + deviz per proiect (lib/b2b/portfolio.ts),
+//     cantități de material calculate din cotele proiectului, ofertă tipărită cu Înainte/După.
+//   • Acces: DOAR 'agency' (sau admin cu sesiune reală) — poarta e UX; datele proiectelor sunt oricum
+//     filtrate pe email-ul contului în `fetchProjectsFromDb` (și prin RLS în Supabase).
 // SSR safety: no Date / Math.random during render (useClientDate for the print header).
 "use client";
 
@@ -12,6 +16,7 @@ import React, { useEffect, useMemo, useState } from 'react';
 import {
   FileCode,
   FileSpreadsheet,
+  FolderOpen,
   Plus,
   Printer,
   RotateCcw,
@@ -39,9 +44,23 @@ import {
   type InvoiceLine,
 } from '@/app/lib/b2b/estimate';
 import EnterpriseGate from '@/app/components/b2b/EnterpriseGate';
-import PrintDeviz from '@/app/components/b2b/PrintDeviz';
+import PrintDeviz, { type PrintProject } from '@/app/components/b2b/PrintDeviz';
 import { buildCsv, buildFacturX } from '@/app/lib/b2b/exports';
-import { getSessionEmail } from '@/app/lib/supabase/auth';
+import { fetchProjectsFromDb } from '@/app/lib/supabase/projects';
+import { SPACE_MODES, getSpace, getStyle, calculateEngineering } from '@/app/data/catalog';
+import type { SavedProject } from '@/app/types';
+import {
+  EMPTY_CLIENT,
+  loadSeller,
+  loadWorkspace,
+  projectArea,
+  saveSeller,
+  saveWorkspace,
+  savedWorkspaceIds,
+  seedMaterials,
+  seedScope,
+  type ClientMeta,
+} from '@/app/lib/b2b/portfolio';
 import { getSkin, EYEBROW } from '@/app/lib/theme/skin';
 import { LiveDot, Corners } from '@/app/components/ui/Editorial';
 
@@ -52,7 +71,13 @@ export default function B2BPage() {
   const eyebrow = `${EYEBROW} ${sk.dim}`;
 
   const access = useEnterpriseAccess();
-  const [email, setEmail] = useState<string | null>(null);
+  const email = access.email; // inclusiv profilurile demo (sesiune reală sau demo)
+
+  // ── Portofoliu: proiecte salvate ale contului ───────────────────────────
+  const [projects, setProjects] = useState<SavedProject[]>([]);
+  const [loadedFor, setLoadedFor] = useState<string | null>(null); // emailul pentru care s-au încărcat proiectele
+  const [selectedId, setSelectedId] = useState<string | null>(null);
+  const [savedIds, setSavedIds] = useState<Set<string>>(() => new Set());
 
   // ── Workspace state ─────────────────────────────────────────────────────
   const [projectName, setProjectName] = useState('');
@@ -66,20 +91,43 @@ export default function B2BPage() {
   const [margin, setMargin] = useState(15);
   const [vat, setVat] = useState(21);
   const [items, setItems] = useState<LineItem[]>([]);
-  const [seller, setSeller] = useState({ name: '', vatId: '' });
-  const [buyer, setBuyer] = useState({ name: '', vatId: '' });
+  const [seller, setSeller] = useState(loadSeller);
+  const [client, setClient] = useState<ClientMeta>(EMPTY_CLIENT);
   const [invoiceNo, setInvoiceNo] = useState('');
   const printDate = useClientDate(); // client-only date for the printed header
 
+  // Încarcă proiectele DOAR după ce accesul enterprise este confirmat.
+  const canLoad = access.isEnterprise && !!email;
+  const projectsLoading = canLoad && loadedFor !== email;
   useEffect(() => {
+    if (!canLoad || !email) return;
     let alive = true;
-    getSessionEmail()
-      .then((e) => alive && setEmail(e ?? null))
-      .catch(() => undefined);
+    fetchProjectsFromDb(email)
+      .then((list) => {
+        if (!alive) return;
+        setProjects(list);
+        setSavedIds(savedWorkspaceIds());
+      })
+      .catch(() => undefined)
+      .finally(() => alive && setLoadedFor(email));
     return () => {
       alive = false;
     };
-  }, []);
+  }, [canLoad, email]);
+
+  // Datele firmei (furnizor) se rețin între sesiuni.
+  useEffect(() => {
+    saveSeller(seller);
+  }, [seller]);
+
+  // Salvare automată a devizului pentru proiectul selectat (client + parametri + linii).
+  useEffect(() => {
+    if (!selectedId) return;
+    saveWorkspace(selectedId, {
+      client, docNo: invoiceNo, area, region, level, crew, rateOverride, scope,
+      contingency, margin, vat, items, updatedAt: new Date().toISOString(),
+    });
+  }, [selectedId, client, invoiceNo, area, region, level, crew, rateOverride, scope, contingency, margin, vat, items]);
 
   // ── Calculations ────────────────────────────────────────────────────────
   const regionData = REGIONS.find((r) => r.id === region) ?? REGIONS[0];
@@ -113,6 +161,18 @@ export default function B2BPage() {
   const uplift = base > 0 ? net / base : 1;
   const workDays = crew > 0 ? Math.ceil(laborHours / (crew * 8)) : 0;
 
+  const selectedProject = projects.find((p) => p.id === selectedId) ?? null;
+  const printProject: PrintProject | null = selectedProject && {
+    title: selectedProject.title,
+    modeLabel: t(SPACE_MODES[selectedProject.mode].labelRo, SPACE_MODES[selectedProject.mode].labelEn),
+    spaceLabel: (() => { const sp = getSpace(selectedProject.mode, selectedProject.spaceType); return t(sp.labelRo, sp.labelEn); })(),
+    styleName: (() => { const st = getStyle(selectedProject.styleId); return t(st.nameRo, st.nameEn); })(),
+    dims: `${selectedProject.dimensions.width} × ${selectedProject.dimensions.length} × ${selectedProject.dimensions.height} m`,
+    createdAt: selectedProject.createdAt,
+    originalImage: selectedProject.originalImage,
+    generatedImage: selectedProject.generatedImage,
+  };
+
   // ── Invoice lines (contingency + margin spread pro-rata over every line) ──
   const buildInvoiceLines = (): InvoiceLine[] => {
     const lines: InvoiceLine[] = [];
@@ -141,6 +201,31 @@ export default function B2BPage() {
   const resetAll = () => {
     setItems([]); setProjectName(''); setRateOverride({}); setScope({});
     setContingency(5); setMargin(15); setArea(68.4); setCrew(3);
+    setClient(EMPTY_CLIENT); setInvoiceNo(''); setSelectedId(null);
+  };
+
+  // Alege un proiect din portofoliu: reia devizul salvat sau îl pornește din cotele proiectului.
+  const selectProject = (p: SavedProject) => {
+    const ws = loadWorkspace(p.id);
+    setSelectedId(p.id);
+    setProjectName(p.title);
+    if (ws) {
+      setClient({ ...EMPTY_CLIENT, ...ws.client }); setInvoiceNo(ws.docNo); setArea(ws.area);
+      setRegion(ws.region); setLevel(ws.level); setCrew(ws.crew); setRateOverride(ws.rateOverride);
+      setScope(ws.scope); setContingency(ws.contingency); setMargin(ws.margin); setVat(ws.vat); setItems(ws.items);
+    } else {
+      setClient(EMPTY_CLIENT); setInvoiceNo(''); setArea(+projectArea(p).toFixed(1) || 1);
+      setRateOverride({}); setScope(seedScope(p)); setItems(seedMaterials(p));
+    }
+    setSavedIds((prev) => new Set(prev).add(p.id));
+  };
+
+  // Recalculează materialele din cotele proiectului (suprascrie liniile curente).
+  const reseedFromProject = () => {
+    if (!selectedProject) return;
+    setArea(+projectArea(selectedProject).toFixed(1) || 1);
+    setScope(seedScope(selectedProject));
+    setItems(seedMaterials(selectedProject));
   };
 
   const exportCsv = () => {
@@ -149,7 +234,7 @@ export default function B2BPage() {
   };
 
   const exportFacturX = () => {
-    const xml = buildFacturX({ lines: buildInvoiceLines(), vat, invoiceNo, seller, buyer });
+    const xml = buildFacturX({ lines: buildInvoiceLines(), vat, invoiceNo, seller, buyer: client });
     download(`factur-x-${(invoiceNo || 'draft').replace(/\s+/g, '-')}.xml`, xml, 'application/xml');
   };
 
@@ -218,6 +303,57 @@ export default function B2BPage() {
         <div className="grid grid-cols-1 lg:grid-cols-12 gap-6 items-start">
           {/* ── LEFT: inputs ─────────────────────────────────────────────── */}
           <div className="lg:col-span-8 space-y-6">
+            {/* Portfolio: proiecte salvate */}
+            <section className={panel}>
+              <div className={panelHead}>
+                <span>portfolio.projects</span>
+                <span>{String(projects.length).padStart(2, '0')}</span>
+              </div>
+              {projectsLoading ? (
+                <div className={`m-5 h-24 border rounded-sm animate-pulse ${sk.card}`} aria-busy="true" />
+              ) : projects.length === 0 ? (
+                <p className={`p-8 text-center text-sm ${sk.dim}`}>
+                  {t('Nu ai proiecte salvate. Generează și salvează un design în Studio, apoi alege-l aici.', 'No saved projects. Generate and save a design in the Studio, then pick it here.')}
+                </p>
+              ) : (
+                <ul className="p-5 grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 gap-3 max-h-[26rem] overflow-y-auto">
+                  {projects.map((p) => {
+                    const active = p.id === selectedId;
+                    const sp = getSpace(p.mode, p.spaceType);
+                    return (
+                      <li key={p.id}>
+                        <button type="button" onClick={() => selectProject(p)} aria-pressed={active} className={`w-full text-left border rounded-sm overflow-hidden cursor-pointer touch-manipulation transition-colors ${active ? `${sk.accent} border-current` : sk.line} ${sk.rowHover}`}>
+                          <div className={`h-24 flex items-center justify-center ${sk.cell}`}>
+                            {p.generatedImage ? (
+                              // eslint-disable-next-line @next/next/no-img-element
+                              <img src={p.generatedImage} alt="" loading="lazy" className="w-full h-full object-cover" />
+                            ) : (
+                              <FolderOpen className={`w-5 h-5 ${sk.dim}`} />
+                            )}
+                          </div>
+                          <div className="p-3 space-y-1">
+                            <p className={`text-sm font-medium truncate ${sk.strong}`}>{p.title}</p>
+                            <p className={`font-mono text-[11px] ${sk.dim}`}>
+                              {t(sp.labelRo, sp.labelEn)} · {calculateEngineering(p.dimensions, p.mode, p.spaceType).floorArea} m² · {p.createdAt.slice(0, 10)}
+                            </p>
+                            {savedIds.has(p.id) && <p className={`${eyebrow} ${sk.accent}`}>{t('deviz salvat', 'estimate saved')}</p>}
+                          </div>
+                        </button>
+                      </li>
+                    );
+                  })}
+                </ul>
+              )}
+              {selectedProject && (
+                <div className={`flex flex-wrap items-center justify-between gap-2 px-5 py-3 border-t ${sk.line}`}>
+                  <p className={`text-xs ${sk.muted}`}>{t('Deviz activ:', 'Active estimate:')} <span className={sk.strong}>{selectedProject.title}</span> · {t('se salvează automat', 'autosaved')}</p>
+                  <button type="button" onClick={reseedFromProject} className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm text-xs cursor-pointer touch-manipulation ${sk.btnGhost}`}>
+                    <RotateCcw className="w-3 h-3" /> {t('Recalculează materialele din proiect', 'Recompute materials from project')}
+                  </button>
+                </div>
+              )}
+            </section>
+
             {/* Project parameters */}
             <section className={panel}>
               <div className={panelHead}><span>project.params</span></div>
@@ -357,15 +493,20 @@ export default function B2BPage() {
               )}
             </section>
 
-            {/* Invoice parties */}
+            {/* Client + furnizor (apar în oferta tipărită și în Factur-X) */}
             <section className={panel}>
-              <div className={panelHead}><span>factur-x.parties</span></div>
+              <div className={panelHead}><span>client.details</span></div>
               <div className="p-5 grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <label>{lbl(t('Furnizor (firma ta)', 'Seller (your company)'))}<input value={seller.name} onChange={(e) => setSeller((s) => ({ ...s, name: e.target.value }))} className={field} /></label>
                 <label>{lbl(t('CUI furnizor', 'Seller VAT ID'))}<input value={seller.vatId} onChange={(e) => setSeller((s) => ({ ...s, vatId: e.target.value }))} placeholder="RO12345678" className={`${field} font-mono`} /></label>
-                <label>{lbl(t('Client', 'Buyer'))}<input value={buyer.name} onChange={(e) => setBuyer((s) => ({ ...s, name: e.target.value }))} className={field} /></label>
-                <label>{lbl(t('CUI client', 'Buyer VAT ID'))}<input value={buyer.vatId} onChange={(e) => setBuyer((s) => ({ ...s, vatId: e.target.value }))} className={`${field} font-mono`} /></label>
+                <label>{lbl(t('Client', 'Buyer'))}<input value={client.name} onChange={(e) => setClient((c) => ({ ...c, name: e.target.value }))} className={field} /></label>
+                <label>{lbl(t('CUI client', 'Buyer VAT ID'))}<input value={client.vatId} onChange={(e) => setClient((c) => ({ ...c, vatId: e.target.value }))} className={`${field} font-mono`} /></label>
+                <label>{lbl(t('Email client', 'Client email'))}<input type="email" value={client.email} onChange={(e) => setClient((c) => ({ ...c, email: e.target.value }))} className={field} /></label>
+                <label>{lbl(t('Telefon client', 'Client phone'))}<input type="tel" value={client.phone} onChange={(e) => setClient((c) => ({ ...c, phone: e.target.value }))} className={field} /></label>
+                <label>{lbl(t('Adresa clientului', 'Client address'))}<input value={client.address} onChange={(e) => setClient((c) => ({ ...c, address: e.target.value }))} className={field} /></label>
+                <label>{lbl(t('Adresa șantierului', 'Site address'))}<input value={client.siteAddress} onChange={(e) => setClient((c) => ({ ...c, siteAddress: e.target.value }))} className={field} /></label>
                 <label>{lbl(t('Număr document', 'Document number'))}<input value={invoiceNo} onChange={(e) => setInvoiceNo(e.target.value)} placeholder="SUC-2026-001" className={`${field} font-mono`} /></label>
+                <label className="sm:col-span-2">{lbl(t('Observații / condiții (apar în ofertă)', 'Notes / terms (shown on the offer)'))}<textarea rows={2} value={client.notes} onChange={(e) => setClient((c) => ({ ...c, notes: e.target.value }))} className={`${field} h-auto py-2`} /></label>
               </div>
             </section>
           </div>
@@ -452,13 +593,16 @@ export default function B2BPage() {
       {/* ══ PRINT ONLY ═══════════════════════════════════════════════════ */}
       <PrintDeviz
         isRo={isRo}
-        projectName={projectName}
+        docNo={invoiceNo}
         printDate={printDate}
-        lines={buildInvoiceLines()}
-        net={net}
-        vat={vat}
-        vatAmt={vatAmt}
-        gross={gross}
+        project={printProject}
+        projectName={projectName}
+        seller={seller}
+        client={client}
+        labor={labor.map((l) => ({ name: t(l.ro, l.en), hours: l.hours, rate: l.rate, cost: l.cost }))}
+        items={items}
+        totals={{ labor: laborTotal, materials: itemsTotal, contingency: contingencyAmt, contingencyPct: contingency, margin: marginAmt, marginPct: margin, net, vat, vatAmt, gross }}
+        schedule={{ days: workDays, crew, hours: laborHours }}
       />
     </div>
   );

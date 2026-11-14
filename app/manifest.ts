@@ -4,18 +4,21 @@ import type { MetadataRoute } from 'next';
 
 export default function manifest(): MetadataRoute.Manifest {
   return {
-    name: 'SUCVAR | Spatial & Engineering Studio',
+    name: 'SUCVAR — Spatial & Engineering Systems',
     short_name: 'SUCVAR',
     description: 'Design și specificație de materiale: cote precise, cantități calculate, deviz gata de execuție.',
     start_url: '/',
     scope: '/',
     display: 'standalone', // ecran complet, fără bara browserului
     orientation: 'portrait',
-    background_color: '#F7F6F2', // ivory (ecranul de pornire)
-    theme_color: '#141413', // negru mat
+    background_color: '#09090B', // obsidian (ecranul de pornire iOS/Android)
+    theme_color: '#09090B', // obsidian (bara de stare / titlu)
+    // PNG-uri reale (logo SUCVAR pe obsidian); 'maskable' permite decupare adaptivă pe Android
     icons: [
-      { src: '/icon', sizes: '512x512', type: 'image/png', purpose: 'any' },
-      { src: '/apple-icon', sizes: '180x180', type: 'image/png', purpose: 'any' },
+      { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },
+      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'any' },
+      { src: '/icons/icon-512.png', sizes: '512x512', type: 'image/png', purpose: 'maskable' },
+      { src: '/apple-icon.png', sizes: '180x180', type: 'image/png' },
     ],
   };
 }

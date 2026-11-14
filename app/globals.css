@@ -61,7 +61,11 @@ html {
 }
 
 /* ── Print ───────────────────────────────────────────────────────── */
+@page { size: A4; margin: 12mm; }
+
 @media print {
+  html, body { background: #fff !important; }
+  tr, figure { break-inside: avoid; }
   /* Ascunde bara de navigare și tab-ul mobil */
   header, nav { display: none !important; }
   /* Asigură culori negru-pe-alb */

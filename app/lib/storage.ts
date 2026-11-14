@@ -14,6 +14,8 @@ export const STORAGE_KEYS = {
   activeProject: 'sucvar_active_project',
   selectedPlan: 'sucvar_selected_plan',
   preferredStyle: 'sucvar_preferred_style',
+  b2bWorkspaces: 'sucvar_b2b_workspaces', // B2B: date client + deviz per proiect
+  b2bSeller: 'sucvar_b2b_seller', // B2B: datele firmei de construcții (furnizor)
 } as const;
 
 /** Fired (same tab) after every write so useStoredValue subscribers re-render. */

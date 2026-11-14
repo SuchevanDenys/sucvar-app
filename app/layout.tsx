@@ -32,7 +32,7 @@ export const metadata: Metadata = {
   other: {
     "mobile-web-app-capable": "yes",
   },
-  // Manifestul PWA vine din app/manifest.ts, iar iconițele din app/icon.tsx și app/apple-icon.tsx
+  // Manifestul PWA vine din app/manifest.ts, iar iconițele din app/icon.png, app/apple-icon.png și public/icons/
 };
 
 // Zoom-ul rămâne permis intenț­ionat (accesibilitate).
@@ -43,7 +43,7 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#141413",
+  themeColor: "#09090B",
 };
 
 export default function RootLayout({
