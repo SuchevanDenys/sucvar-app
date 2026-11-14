@@ -1,20 +1,23 @@
 // app/components/Navbar.tsx
-// v2.0 — fix activare instantanee „Planuri" pe desktop și mobil;
-//         adăugat link B2B în navigare.
+// v4.3 — plan-aware account menu (STARTER / PRO / AGENCY row + B2B lock state).
+// v4.2 — "Engine 4.0 online" badge removed.
+// v4.1 — Lovable "Dark Architecture" visual pass (logic unchanged from v3.0).
+// v3.0 — "Dark Architecture" redesign.
+//   • Flush RO|EN segmented control, theme toggle.
+//   • Avatar circle with dropdown: Arhivă, Modul B2B, Sign Out (replaces AccountWidget).
+//   • PlanBadge, pricing IntersectionObserver and active-link logic are unchanged.
 "use client";
 
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useRef, useState } from 'react';
 import Link from 'next/link';
-import { usePathname } from 'next/navigation';
-import { Home, Layers, CreditCard, User, Sun, Moon, HardHat } from 'lucide-react';
+import { usePathname, useRouter } from 'next/navigation';
+import { Home, Layers, CreditCard, User, Sun, Moon, HardHat, Archive, LogOut, Lock } from 'lucide-react';
 import SucvarLogo from '@/app/components/SucvarLogo';
-import {
-  getUi,
-  getSavedTheme,
-  getSavedLang,
-  THEME_STORAGE_KEY,
-  LANG_STORAGE_KEY,
-} from '@/app/lib/theme';
+import PlanBadge from '@/app/components/PlanBadge';
+import { getSavedLang, THEME_STORAGE_KEY, LANG_STORAGE_KEY } from '@/app/lib/theme';
+import { getSessionEmail } from '@/app/lib/supabase';
+import { PLAN_EVENT, resolvePlan, type PlanTier } from '@/app/lib/plan';
+import { getSkin, EYEBROW, CONTAINER } from '@/app/lib/skin';
 import { Language, ThemeMode } from '@/app/types/studio';
 
 interface NavbarProps {
@@ -24,83 +27,134 @@ interface NavbarProps {
   setTheme: (t: ThemeMode) => void;
 }
 
-// ── Clase stiluri ────────────────────────────────────────────────────────────
+const USER_KEY = 'sucvar_user_email';
 
-function desktopLinkClass(active: boolean) {
-  return [
-    'relative py-2 text-xs uppercase tracking-widest transition-opacity hover:opacity-100',
-    active ? 'opacity-100 font-semibold' : 'opacity-55',
-  ].join(' ');
-}
-
-function mobileTabClass(active: boolean) {
-  return [
-    'flex flex-col items-center justify-center gap-1 text-[10px] uppercase tracking-wider touch-manipulation transition-opacity',
-    active ? 'opacity-100 font-semibold' : 'opacity-55',
-  ].join(' ');
-}
-
-// ── Componenta ───────────────────────────────────────────────────────────────
+// Minimal shape of the supabase helper module — sign-out is resolved at runtime
+// so this file compiles whatever your lib exports (see notes in the answer).
+type SupabaseModule = {
+  signOut?: () => Promise<unknown>;
+  signOutUser?: () => Promise<unknown>;
+  supabase?: { auth?: { signOut?: () => Promise<unknown> } };
+};
 
 export default function Navbar({ lang, setLang, theme, setTheme }: NavbarProps) {
   const pathname = usePathname();
+  const router = useRouter();
   const isDark = theme === 'dark';
   const isRo = lang === 'ro';
-  const ui = getUi(isDark);
+  const sk = getSkin(isDark);
 
-  // ── Stare: secțiunea #pricing este vizibilă pe ecran? ───────────────────
-  // Se setează pe `true` IMEDIAT la click pe „Planuri" (chiar înainte ca
-  // pagina să deruleze), și se recalculează continuu pe scroll.
   const [pricingVisible, setPricingVisible] = useState(false);
+  const [email, setEmail] = useState<string | null>(null);
+  const [tier, setTier] = useState<PlanTier | null>(null);
+  const [menuOpen, setMenuOpen] = useState(false);
+  const [scrolled, setScrolled] = useState(false);
+  const menuRef = useRef<HTMLDivElement>(null);
 
-  // Restaurează tema și limba salvate la prima montare
+  // Restore saved theme (dark by default) and language on first mount
   useEffect(() => {
-    const t = getSavedTheme();
+    let savedTheme: ThemeMode = 'dark';
+    try {
+      const raw = window.localStorage.getItem(THEME_STORAGE_KEY);
+      if (raw === 'light' || raw === 'dark') savedTheme = raw;
+    } catch {
+      /* ignore */
+    }
     const l = getSavedLang();
-    if (t !== theme) setTheme(t);
+    if (savedTheme !== theme) setTheme(savedTheme);
     if (l !== lang) setLang(l);
-    document.documentElement.classList.toggle('dark', t === 'dark');
+    document.documentElement.classList.toggle('dark', savedTheme === 'dark');
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Observer pe secțiunea #pricing — mai fiabil decât getBoundingClientRect + scroll
+  // Header hairline fades in after the first few px of scroll (Lovable behaviour)
+  useEffect(() => {
+    const onScroll = () => setScrolled(window.scrollY > 8);
+    onScroll();
+    window.addEventListener('scroll', onScroll, { passive: true });
+    return () => window.removeEventListener('scroll', onScroll);
+  }, []);
+
+  // Session email (Supabase first, Demo profile fallback) — refreshed on navigation
+  useEffect(() => {
+    let alive = true;
+    (async () => {
+      const sessionEmail = await getSessionEmail();
+      const fallback = window.localStorage.getItem(USER_KEY);
+      if (alive) setEmail(sessionEmail ?? fallback ?? null);
+    })();
+    return () => {
+      alive = false;
+    };
+  }, [pathname]);
+
+  // Plan tier (starter | pro | agency) — refreshed on navigation and on plan change events
+  useEffect(() => {
+    let alive = true;
+    const load = () => {
+      resolvePlan()
+        .then((p) => alive && setTier(p.isSignedIn ? p.tier : null))
+        .catch(() => undefined);
+    };
+    load();
+    window.addEventListener(PLAN_EVENT, load);
+    return () => {
+      alive = false;
+      window.removeEventListener(PLAN_EVENT, load);
+    };
+  }, [pathname]);
+
+  // Close the account menu on outside click / Escape / navigation
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [pathname]);
+
+  useEffect(() => {
+    if (!menuOpen) return;
+    const onDown = (e: MouseEvent | TouchEvent) => {
+      if (menuRef.current && !menuRef.current.contains(e.target as Node)) setMenuOpen(false);
+    };
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === 'Escape') setMenuOpen(false);
+    };
+    document.addEventListener('mousedown', onDown);
+    document.addEventListener('touchstart', onDown);
+    document.addEventListener('keydown', onKey);
+    return () => {
+      document.removeEventListener('mousedown', onDown);
+      document.removeEventListener('touchstart', onDown);
+      document.removeEventListener('keydown', onKey);
+    };
+  }, [menuOpen]);
+
+  // Observer on #pricing
   useEffect(() => {
     if (pathname !== '/') {
       setPricingVisible(false);
       return;
     }
-
     const section = document.getElementById('pricing');
     if (!section) return;
-
     const observer = new IntersectionObserver(
       ([entry]) => setPricingVisible(entry.isIntersecting),
-      // Declanșează când cel puțin 20% din secțiune este vizibilă
       { threshold: 0.2, rootMargin: '0px 0px -10% 0px' },
     );
     observer.observe(section);
     return () => observer.disconnect();
   }, [pathname]);
 
-  // ── Flags de activare ────────────────────────────────────────────────────
   const isHome = pathname === '/' && !pricingVisible;
-  // Planuri = activ când secțiunea e pe ecran SAU când suntem pe /checkout
   const isPricing = (pathname === '/' && pricingVisible) || pathname === '/checkout';
   const isStudio = pathname === '/generate';
   const isAccount = pathname === '/login';
   const isB2B = pathname === '/b2b';
 
-  // ── Handlers ─────────────────────────────────────────────────────────────
-
   const handlePricingClick = () => {
-    // Marcăm imediat ca activ; IntersectionObserver va confirma peste ~100 ms
     if (pathname === '/') setPricingVisible(true);
   };
-
   const handleHomeClick = () => setPricingVisible(false);
 
-  const handleLang = () => {
-    const next: Language = isRo ? 'en' : 'ro';
+  const handleLang = (next: Language) => {
     setLang(next);
     window.localStorage.setItem(LANG_STORAGE_KEY, next);
   };
@@ -112,122 +166,224 @@ export default function Navbar({ lang, setLang, theme, setTheme }: NavbarProps) 
     document.documentElement.classList.toggle('dark', next === 'dark');
   };
 
-  // ── Bara activă sub link desktop ─────────────────────────────────────────
-  const activeBar = (active: boolean) =>
-    [
-      'absolute left-0 right-0 -bottom-0.5 h-[2px] transition-all duration-200',
-      active
-        ? `opacity-100 ${isDark ? 'bg-[#F4F3EF]' : 'bg-[#141413]'}`
-        : 'opacity-0',
-    ].join(' ');
+  const handleSignOut = async () => {
+    setMenuOpen(false);
+    try {
+      const mod = (await import('@/app/lib/supabase')) as unknown as SupabaseModule;
+      if (typeof mod.signOut === 'function') await mod.signOut();
+      else if (typeof mod.signOutUser === 'function') await mod.signOutUser();
+      else await mod.supabase?.auth?.signOut?.();
+    } catch {
+      /* ignore — local cleanup below still runs */
+    }
+    window.localStorage.removeItem(USER_KEY);
+    setEmail(null);
+    setTier(null);
+    router.push('/login');
+  };
 
-  const smallBtn = `h-9 px-3 border rounded-md text-xs font-medium cursor-pointer touch-manipulation ${ui.btnGhost}`;
+  // ── Styles ──────────────────────────────────────────────────────────────
+  const navHover = isDark ? 'hover:text-zinc-100' : 'hover:text-zinc-900';
+  const navLink = (active: boolean) =>
+    `relative h-16 inline-flex items-center text-[13px] transition-colors duration-300 ${
+      active ? sk.strong : `${sk.muted} ${navHover}`
+    }`;
+  const activeBar = (active: boolean) =>
+    `absolute inset-x-0 -bottom-px h-px transition-opacity duration-200 ${
+      active ? 'opacity-100' : 'opacity-0'
+    } ${isDark ? 'bg-emerald-400' : 'bg-emerald-700'}`;
+  const mobileTab = (active: boolean) =>
+    `flex flex-col items-center justify-center gap-1 text-[9px] tracking-[0.18em] uppercase font-mono touch-manipulation transition-colors ${
+      active ? `${sk.strong}` : sk.dim
+    }`;
+
+  const initials = (email ?? '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase();
+  const isAgency = tier === 'agency';
+  const tierLabel = tier === 'agency' ? 'AGENCY' : tier === 'pro' ? 'PRO' : 'STARTER';
+  const tierColor =
+    tier === 'agency'
+      ? isDark
+        ? 'text-emerald-300'
+        : 'text-emerald-800'
+      : tier === 'pro'
+        ? sk.strong
+        : sk.dim;
+
+  const menuItem = `w-full h-10 px-3 flex items-center gap-2.5 text-xs text-left transition-colors cursor-pointer touch-manipulation ${sk.rowHover}`;
 
   return (
     <>
-      {/* ── TOP HEADER ─────────────────────────────────────────────────────── */}
+      {/* ── TOP HEADER ───────────────────────────────────────────────────── */}
       <header
-        className={`sticky top-0 z-40 border-b backdrop-blur-md pt-[env(safe-area-inset-top)] print:hidden ${ui.header}`}
+        className={`sticky top-0 z-40 border-b pt-[env(safe-area-inset-top)] transition-colors duration-500 print:hidden ${
+          scrolled ? `backdrop-blur-xl ${sk.header}` : 'border-transparent'
+        }`}
       >
-        <div className="max-w-7xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
-          {/* Logo */}
-          <Link
-            href="/"
-            onClick={handleHomeClick}
-            className="touch-manipulation"
-            aria-label="SUCVAR"
-          >
-            <SucvarLogo size={32} withWordmark isDark={isDark} />
-          </Link>
+        <div className={`${CONTAINER} h-16 flex items-center justify-between gap-6`}>
+          <div className="flex items-center gap-5">
+            <Link href="/" onClick={handleHomeClick} className="touch-manipulation" aria-label="SUCVAR">
+              <SucvarLogo size={28} withWordmark isDark={isDark} />
+            </Link>
+          </div>
 
           {/* Desktop nav */}
           <nav className="hidden md:flex items-center gap-8">
-            <Link href="/" onClick={handleHomeClick} className={desktopLinkClass(isHome)}>
+            <Link href="/" onClick={handleHomeClick} className={navLink(isHome)}>
               {isRo ? 'Acasă' : 'Home'}
               <span className={activeBar(isHome)} />
             </Link>
-
-            <Link href="/generate" className={desktopLinkClass(isStudio)}>
+            <Link href="/generate" className={navLink(isStudio)}>
               Studio
               <span className={activeBar(isStudio)} />
             </Link>
-
             <Link
               href="/#pricing"
               onClick={handlePricingClick}
               aria-current={isPricing ? 'page' : undefined}
-              className={desktopLinkClass(isPricing)}
+              className={navLink(isPricing)}
             >
               {isRo ? 'Planuri' : 'Plans'}
               <span className={activeBar(isPricing)} />
             </Link>
-
-            <Link
-              href="/b2b"
-              aria-current={isB2B ? 'page' : undefined}
-              className={desktopLinkClass(isB2B)}
-            >
+            <Link href="/b2b" aria-current={isB2B ? 'page' : undefined} className={navLink(isB2B)}>
               B2B
               <span className={activeBar(isB2B)} />
             </Link>
-
-            <Link href="/login" className={desktopLinkClass(isAccount)}>
-              {isRo ? 'Cont' : 'Account'}
-              <span className={activeBar(isAccount)} />
-            </Link>
           </nav>
 
-          {/* Controale dreapta */}
+          {/* Right controls */}
           <div className="flex items-center gap-2">
-            <button type="button" onClick={handleLang} aria-label="Switch language" className={smallBtn}>
-              {isRo ? 'RO' : 'EN'}
-            </button>
-            <button type="button" onClick={handleTheme} aria-label="Toggle theme" className={smallBtn}>
-              {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-            </button>
-            <Link
-              href="/generate"
-              className={`hidden sm:inline-flex items-center h-9 px-4 rounded-md text-xs font-semibold uppercase tracking-widest transition-colors touch-manipulation ${ui.btn}`}
+            {/* RO | EN flush segmented */}
+            <div
+              role="group"
+              aria-label="Language"
+              className={`flex h-8 items-center border rounded-sm p-0.5 ${sk.line}`}
             >
-              {isRo ? 'Începe proiectul' : 'Start a project'}
-            </Link>
+              {(['ro', 'en'] as Language[]).map((l) => (
+                <button
+                  key={l}
+                  type="button"
+                  onClick={() => handleLang(l)}
+                  aria-pressed={lang === l}
+                  className={`h-full rounded-[1px] px-2.5 ${EYEBROW} cursor-pointer touch-manipulation transition-colors duration-300 ${
+                    lang === l ? sk.segOn : sk.segOff
+                  }`}
+                >
+                  {l}
+                </button>
+              ))}
+            </div>
+
+            <button
+              type="button"
+              onClick={handleTheme}
+              aria-label="Toggle theme"
+              className={`h-8 w-8 inline-flex items-center justify-center border rounded-sm cursor-pointer touch-manipulation transition-colors ${sk.btnGhost}`}
+            >
+              {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
+            </button>
+
+            <PlanBadge isDark={isDark} isRo={isRo} />
+
+            {/* Avatar + dropdown */}
+            {email ? (
+              <div className="relative" ref={menuRef}>
+                <button
+                  type="button"
+                  onClick={() => setMenuOpen((p) => !p)}
+                  aria-haspopup="menu"
+                  aria-expanded={menuOpen}
+                  aria-label={isRo ? 'Meniu cont' : 'Account menu'}
+                  className={`h-8 w-8 inline-flex items-center justify-center rounded-sm border cursor-pointer touch-manipulation transition-opacity hover:opacity-80 ${
+                    isAgency
+                      ? isDark
+                        ? 'border-emerald-400/60'
+                        : 'border-emerald-700/60'
+                      : sk.line
+                  } ${isDark ? 'bg-zinc-900 text-zinc-100' : 'bg-zinc-100 text-zinc-900'}`}
+                >
+                  <span className="font-mono text-[10.5px] tracking-wider">{initials || '··'}</span>
+                </button>
+
+                {menuOpen && (
+                  <div
+                    role="menu"
+                    className={`absolute right-0 mt-2 w-60 border rounded-sm overflow-hidden z-50 backdrop-blur-md ${sk.popover}`}
+                  >
+                    <div className={`px-3 py-3 border-b ${sk.line}`}>
+                      <p className={`${EYEBROW} ${sk.dim}`}>{isRo ? 'Autentificat ca' : 'Signed in as'}</p>
+                      <p className="mt-1 text-xs font-mono truncate">{email}</p>
+                      {tier && (
+                        <p className={`mt-2 flex items-center justify-between ${EYEBROW} ${sk.dim}`}>
+                          <span>{isRo ? 'Plan' : 'Plan'}</span>
+                          <span className={`font-mono font-semibold ${tierColor}`}>{tierLabel}</span>
+                        </p>
+                      )}
+                    </div>
+                    <Link href="/login" role="menuitem" className={menuItem}>
+                      <Archive className={`w-3.5 h-3.5 ${sk.dim}`} />
+                      {isRo ? 'Arhivă' : 'Archive'}
+                    </Link>
+                    <Link href="/b2b" role="menuitem" className={menuItem}>
+                      {tier !== null && !isAgency ? (
+                        <Lock className={`w-3.5 h-3.5 ${sk.dim}`} />
+                      ) : (
+                        <HardHat className={`w-3.5 h-3.5 ${isAgency ? tierColor : sk.dim}`} />
+                      )}
+                      {isRo ? 'Modul B2B' : 'B2B module'}
+                    </Link>
+                    <button
+                      type="button"
+                      role="menuitem"
+                      onClick={handleSignOut}
+                      className={`${menuItem} border-t ${sk.line} ${isDark ? 'text-red-400' : 'text-red-600'}`}
+                    >
+                      <LogOut className="w-3.5 h-3.5" />
+                      Sign Out
+                    </button>
+                  </div>
+                )}
+              </div>
+            ) : (
+              <Link
+                href="/login"
+                className={`inline-flex items-center h-8 px-3 rounded-sm ${EYEBROW} transition-colors touch-manipulation ${sk.btn}`}
+              >
+                {isRo ? 'Autentificare' : 'Sign in'}
+              </Link>
+            )}
           </div>
         </div>
       </header>
 
-      {/* ── MOBILE BOTTOM TAB BAR ──────────────────────────────────────────── */}
-      {/* pb-[env(safe-area-inset-bottom)] = bara de home iPhone nu acoperă tab-urile */}
+      {/* ── MOBILE BOTTOM TAB BAR ───────────────────────────────────────── */}
       <nav
-        className={`md:hidden fixed bottom-0 left-0 right-0 z-50 border-t backdrop-blur-lg pb-[env(safe-area-inset-bottom)] print:hidden ${ui.header}`}
+        className={`md:hidden fixed bottom-0 left-0 right-0 z-50 border-t backdrop-blur-xl pb-[env(safe-area-inset-bottom)] print:hidden ${sk.header}`}
       >
-        <div className="grid grid-cols-5 h-16">
-          <Link href="/" onClick={handleHomeClick} className={mobileTabClass(isHome)}>
-            <Home className="w-5 h-5" />
+        <div className="grid grid-cols-5 h-14">
+          <Link href="/" onClick={handleHomeClick} className={mobileTab(isHome)}>
+            <Home className="w-4 h-4" />
             <span>{isRo ? 'Acasă' : 'Home'}</span>
           </Link>
-
-          <Link href="/generate" className={mobileTabClass(isStudio)}>
-            <Layers className="w-5 h-5" />
+          <Link href="/generate" className={mobileTab(isStudio)}>
+            <Layers className="w-4 h-4" />
             <span>Studio</span>
           </Link>
-
           <Link
             href="/#pricing"
             onClick={handlePricingClick}
             aria-current={isPricing ? 'page' : undefined}
-            className={mobileTabClass(isPricing)}
+            className={mobileTab(isPricing)}
           >
-            <CreditCard className="w-5 h-5" />
+            <CreditCard className="w-4 h-4" />
             <span>{isRo ? 'Planuri' : 'Plans'}</span>
           </Link>
-
-          <Link href="/b2b" className={mobileTabClass(isB2B)}>
-            <HardHat className="w-5 h-5" />
+          <Link href="/b2b" className={mobileTab(isB2B)}>
+            <HardHat className="w-4 h-4" />
             <span>B2B</span>
           </Link>
-
-          <Link href="/login" className={mobileTabClass(isAccount)}>
-            <User className="w-5 h-5" />
+          <Link href="/login" className={mobileTab(isAccount)}>
+            <User className="w-4 h-4" />
             <span>{isRo ? 'Cont' : 'Account'}</span>
           </Link>
         </div>

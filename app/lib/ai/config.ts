@@ -17,6 +17,11 @@ export const AI_LIMITS = {
   seedMax: 2_147_483_647,
 };
 
+// Limitele planurilor de abonament
+export const PLAN_LIMITS = {
+  starterMonthlyGenerations: 3, // proiecte / generări AI pe lună pentru planul gratuit
+} as const;
+
 // Setările cu care pornește Studio
 export const DEFAULT_AI_SETTINGS: AiSettings = {
   extraPrompt: '',

@@ -1,8 +1,11 @@
 // app/api/generate/route.ts
 // Receives the room photo + all options selected in Studio, builds a short and precise
 // architectural prompt and calls Stable Diffusion (ControlNet) through Replicate.
+// The generated image is then converted on the server into a compressed, PERMANENT
+// JPEG Data URL (Replicate URLs expire after a few hours).
 import { NextResponse } from 'next/server';
 import Replicate from 'replicate';
+import sharp from 'sharp';
 import {
   SPACE_MODES,
   VISUAL_STYLES,
@@ -11,11 +14,19 @@ import {
 } from '@/app/data/catalog';
 import { AI_LIMITS, DEFAULT_AI_SETTINGS } from '@/app/lib/ai/config';
 import { BudgetTier, DesignMode } from '@/app/types/studio';
+import { checkGenerationQuota, recordServerGeneration } from '@/app/lib/quota';
 
+// sharp needs the Node.js runtime (not Edge)
 export const maxDuration = 60;
 
 // Maximum size of the uploaded photo (~6 MB as base64 text)
 const MAX_IMAGE_LENGTH = 6_000_000;
+
+// Permanent result image: max width and JPEG quality
+const RESULT_MAX_WIDTH = 1280;
+const RESULT_JPEG_QUALITY = 82;
+// Safety limit for the downloaded Replicate file (20 MB)
+const MAX_DOWNLOAD_BYTES = 20 * 1024 * 1024;
 
 // The CLIP text encoder of Stable Diffusion reads only ~77 tokens; everything after that
 // is silently ignored. We keep the prompt under this budget so the furniture list
@@ -200,10 +211,56 @@ function getImageUrl(output: unknown): string | null {
 }
 
 // =====================================================================
+// Permanent image conversion (URL -> compressed JPEG Data URL)
+// =====================================================================
+
+// Downloads the temporary Replicate image on the server and converts it to a
+// lightweight JPEG Data URL (max 1280 px wide, quality 82). The result is a
+// self-contained string that never expires, same format as `original_image`.
+async function toPermanentJpegDataUrl(sourceUrl: string): Promise<string> {
+  // Already a data URL (not expected, but harmless): re-encode it the same way
+  let inputBuffer: Buffer;
+
+  if (sourceUrl.startsWith('data:image/')) {
+    const base64Part = sourceUrl.slice(sourceUrl.indexOf(',') + 1);
+    inputBuffer = Buffer.from(base64Part, 'base64');
+  } else {
+    const response = await fetch(sourceUrl, { signal: AbortSignal.timeout(25_000) });
+    if (!response.ok) {
+      throw new Error(`Download failed (${response.status})`);
+    }
+    const arrayBuffer = await response.arrayBuffer();
+    if (arrayBuffer.byteLength > MAX_DOWNLOAD_BYTES) {
+      throw new Error('Generated image is too large');
+    }
+    inputBuffer = Buffer.from(arrayBuffer);
+  }
+
+  const jpegBuffer = await sharp(inputBuffer)
+    .rotate() // respect EXIF orientation
+    .resize({ width: RESULT_MAX_WIDTH, withoutEnlargement: true })
+    .flatten({ background: '#ffffff' }) // PNG with alpha -> no black background in JPEG
+    .jpeg({ quality: RESULT_JPEG_QUALITY, mozjpeg: true })
+    .toBuffer();
+
+  return `data:image/jpeg;base64,${jpegBuffer.toString('base64')}`;
+}
+
+// =====================================================================
 // POST /api/generate
 // =====================================================================
 export async function POST(request: Request) {
   try {
+    // 0. Sesiune + plan + limită lunară — ÎNAINTE de orice altă muncă
+    //    (nu mai citim un body de câțiva MB pentru cereri respinse).
+    const quota = await checkGenerationQuota(request);
+    if (!quota.ok) {
+      return NextResponse.json(
+        { error: quota.error, code: quota.code, used: quota.used, limit: quota.limit },
+        { status: quota.status }
+      );
+    }
+
     const body: unknown = await request.json();
     const payload = isRecord(body) ? body : {};
 
@@ -284,8 +341,17 @@ export async function POST(request: Request) {
 
     if (!token || token === 'demo') {
       await new Promise((resolve) => setTimeout(resolve, 2000));
+      const demoUrl = DEMO_IMAGES[mode] ?? DEMO_IMAGES.interiors;
+      let demoResult = demoUrl;
+      try {
+        demoResult = await toPermanentJpegDataUrl(demoUrl);
+      } catch {
+        // keep the plain Unsplash URL (it does not expire)
+      }
       return NextResponse.json({
-        result: DEMO_IMAGES[mode] ?? DEMO_IMAGES.interiors,
+        result: demoResult,
+        imageUrl: demoResult,
+        generatedImage: demoResult,
         isDemo: true,
         promptUsed: finalPrompt,
       });
@@ -312,15 +378,35 @@ export async function POST(request: Request) {
       }
     );
 
-    const resultUrl = getImageUrl(output);
-    if (!resultUrl) {
+    const replicateUrl = getImageUrl(output);
+    if (!replicateUrl) {
       return NextResponse.json({ error: 'Modelul AI nu a returnat nicio imagine.' }, { status: 502 });
     }
 
+    // Replicate returned an image -> the generation is paid for, so we log it
+    // in the server journal (ai_generations) BEFORE the conversion step.
+    await recordServerGeneration(quota.userId);
+
+    // 7. Convert the temporary Replicate URL into a permanent compressed JPEG Data URL.
+    //    If the conversion fails, we still return the temporary URL plus a warning,
+    //    so the user does not lose the render they just paid for.
+    let permanentResult = replicateUrl;
+    let warning: string | undefined;
+    try {
+      permanentResult = await toPermanentJpegDataUrl(replicateUrl);
+    } catch (conversionError) {
+      console.error('Permanent image conversion failed:', conversionError);
+      warning =
+        'Imaginea nu a putut fi comprimată permanent; linkul este temporar și expiră în câteva ore. Salvează proiectul imediat.';
+    }
+
     return NextResponse.json({
-      result: resultUrl,
+      result: permanentResult,
+      imageUrl: permanentResult,
+      generatedImage: permanentResult,
       isDemo: false,
       promptUsed: finalPrompt,
+      ...(warning ? { warning } : {}),
     });
   } catch (error) {
     let message = 'AI Server Error';

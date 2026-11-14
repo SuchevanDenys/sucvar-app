@@ -25,6 +25,7 @@ import {
 } from 'lucide-react';
 import Navbar from '@/app/components/Navbar';
 import SucvarLogo from '@/app/components/SucvarLogo';
+import { notifyAccountChange } from '@/app/components/AccountWidget';
 import BeforeAfterSlider from '@/app/components/BeforeAfterSlider';
 import {
   SPACE_MODES,
@@ -49,7 +50,9 @@ import {
 } from '@/app/lib/supabase';
 import { getUi } from '@/app/lib/theme';
 import { formatProjectDate } from '@/app/lib/format';
-import { Language, SavedProject, ThemeMode } from '@/app/types/studio';
+import { DEMO_TIER_KEY, notifyPlanChange } from '@/app/lib/plan';
+import { usePlan } from '@/app/lib/usePlan';
+import { Language, SavedProject, SubscriptionTier, ThemeMode } from '@/app/types/studio';
 
 const USER_KEY = 'sucvar_user_email';
 const USER_ROLE_KEY = 'sucvar_user_role';
@@ -87,6 +90,7 @@ const QUICK_PROFILES = [
     roleRo: 'Arhitect Sistem (Fondator)',
     roleEn: 'Lead Systems Architect',
     badge: 'PRO',
+    tier: 'pro' as SubscriptionTier,
     icon: ShieldCheck,
   },
   {
@@ -95,6 +99,7 @@ const QUICK_PROFILES = [
     roleRo: 'Comisie Evaluare Licență',
     roleEn: 'Thesis Evaluation Board',
     badge: 'USV',
+    tier: 'pro' as SubscriptionTier,
     icon: GraduationCap,
   },
   {
@@ -103,6 +108,7 @@ const QUICK_PROFILES = [
     roleRo: 'Client / Beneficiar Proiect',
     roleEn: 'Project Homeowner / Client',
     badge: 'STUDIO',
+    tier: 'starter' as SubscriptionTier,
     icon: Briefcase,
   },
 ];
@@ -111,6 +117,7 @@ type AuthTab = 'signin' | 'signup' | 'forgot';
 
 export default function LoginAndAccountPage() {
   const router = useRouter();
+  const plan = usePlan();
 
   // ---------- Setări pagină ----------
   const [lang, setLang] = useState<Language>('ro');
@@ -180,7 +187,10 @@ export default function LoginAndAccountPage() {
     window.localStorage.setItem(USER_ROLE_KEY, role);
     if (isCloud) {
       window.localStorage.removeItem(DEMO_KEY);
+      window.localStorage.removeItem(DEMO_TIER_KEY);
     }
+    notifyAccountChange(); // actualizează widgetul din Navbar
+    notifyPlanChange(); // actualizează badge-ul de plan (STUDIO / PRO)
     setUserRole(role);
     setAvatarUrl(avatar);
     setIsCloudSession(isCloud);
@@ -204,6 +214,7 @@ export default function LoginAndAccountPage() {
         window.localStorage.setItem(USER_KEY, session.email);
         window.localStorage.setItem(USER_ROLE_KEY, role);
         window.localStorage.removeItem(DEMO_KEY);
+        window.localStorage.removeItem(DEMO_TIER_KEY);
         setUserRole(role);
         setAvatarUrl(session.avatarUrl);
         setIsCloudSession(true);
@@ -261,12 +272,17 @@ export default function LoginAndAccountPage() {
   };
 
   // 2. Profil DEMO cu 1 click
-  const handleQuickAccess = async (profileEmail: string, roleLabel: string) => {
+  const handleQuickAccess = async (
+    profileEmail: string,
+    roleLabel: string,
+    tier: SubscriptionTier,
+  ) => {
     setIsSubmitting(true);
     resetMessages();
     try {
       await signOutUser();
       window.localStorage.setItem(DEMO_KEY, '1');
+      window.localStorage.setItem(DEMO_TIER_KEY, tier); // planul profilului demo
       await openAccount(profileEmail, roleLabel, false, null);
       setAuthStatus(
         t(
@@ -426,6 +442,9 @@ export default function LoginAndAccountPage() {
     window.localStorage.removeItem(USER_KEY);
     window.localStorage.removeItem(USER_ROLE_KEY);
     window.localStorage.removeItem(DEMO_KEY);
+    window.localStorage.removeItem(DEMO_TIER_KEY);
+    notifyAccountChange(); // actualizează widgetul din Navbar
+    notifyPlanChange();
     setIsCloudSession(false);
     setAvatarUrl(null);
     setLoggedUser(null);
@@ -770,7 +789,7 @@ export default function LoginAndAccountPage() {
                     <button
                       key={profile.id}
                       type="button"
-                      onClick={() => handleQuickAccess(profile.email, roleLabel)}
+                      onClick={() => handleQuickAccess(profile.email, roleLabel, profile.tier)}
                       className={`w-full p-4 rounded-md border text-left flex items-center justify-between gap-4 transition-all cursor-pointer touch-manipulation ${ui.btnGhost}`}
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
@@ -837,6 +856,13 @@ export default function LoginAndAccountPage() {
                     <span className="text-xs font-mono uppercase px-2 py-0.5 rounded-sm bg-[#3B4D43] text-white">
                       {userRole}
                     </span>
+                    <span
+                      className={`text-[10px] font-mono font-semibold uppercase px-2 py-0.5 rounded-sm border tracking-widest ${
+                        plan.isPro ? 'bg-[#3B4D43] text-white border-[#3B4D43]' : `${ui.muted} border-current`
+                      }`}
+                    >
+                      {plan.isPro ? 'PRO' : 'STUDIO'}
+                    </span>
                     <span className={`text-xs flex items-center gap-1 ${ui.accent}`}>
                       <UserCheck className="w-3.5 h-3.5" />
                       {isCloudSession
@@ -846,6 +872,14 @@ export default function LoginAndAccountPage() {
                   </div>
                   <h2 className="text-lg font-semibold break-all mt-1">{loggedUser}</h2>
                   {authStatus && <p className={`text-xs mt-0.5 ${ui.muted}`}>{authStatus}</p>}
+                  {!plan.isLoading && !plan.isPro && (
+                    <p className={`text-xs mt-0.5 ${ui.muted}`}>
+                      {t('Generări luna aceasta', 'Generations this month')}: {plan.used} / {plan.limit} ·{' '}
+                      <Link href="/#pricing" className="underline underline-offset-4">
+                        {t('Treci pe Professional', 'Upgrade to Professional')}
+                      </Link>
+                    </p>
+                  )}
                 </div>
               </div>
 

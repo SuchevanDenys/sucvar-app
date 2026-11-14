@@ -70,6 +70,11 @@ export interface LaborEstimate {
 // Planurile tarifare (pagina Home și /checkout)
 export type PlanId = 'starter' | 'pro' | 'agency';
 
+// Planul de acces al unui cont (câmpul `subscription_tier` din Supabase).
+// 'starter' = gratuit (Studio), 'pro' = Professional. Valoarea 'agency' (Business)
+// din tabel este tratată ca 'pro' (include tot ce are Professional).
+export type SubscriptionTier = 'starter' | 'pro';
+
 // Furnizorul de imagini AI folosit de /api/generate
 export type AiProviderId = 'stable-diffusion' | 'replicate' | 'demo';
 

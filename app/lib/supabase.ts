@@ -1,4 +1,6 @@
 // app/lib/supabase.ts
+// v2.4 — getAccessToken() pentru antetul Authorization către /api/generate
+// v2.3 — plan de abonament (`subscription_tier`) + numărarea proiectelor din luna curentă
 // v2.2 — Google OAuth complet + conversie sigură a rândurilor din tabelul `projects`
 import {
   createClient,
@@ -12,6 +14,7 @@ import type {
   RoomDimensions,
   SavedProject,
   SaveProjectResult,
+  SubscriptionTier,
 } from '@/app/types/studio';
 
 // ── Curățare automată URL și cheie din .env.local ─────────────────────────────
@@ -273,6 +276,20 @@ export async function getSessionInfo(): Promise<{
   }
 }
 
+// Token-ul de acces al sesiunii curente (JWT). Se trimite la server în antetul
+// `Authorization: Bearer <token>`. getSession() îl reîmprospătează automat dacă a expirat.
+// Returnează null pentru vizitatori neautentificați și pentru profilurile Demo.
+export async function getAccessToken(): Promise<string | null> {
+  if (!supabase) return null;
+  try {
+    const { data, error } = await supabase.auth.getSession();
+    if (error) return null;
+    return data.session?.access_token ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export async function getSessionEmail(): Promise<string | null> {
   const info = await getSessionInfo();
   return info?.email ?? null;
@@ -503,5 +520,77 @@ export async function fetchProjectsFromDb(userEmail: string): Promise<SavedProje
   } catch (err) {
     console.error('[SUCVAR] Supabase select exception:', err);
     return localProjects;
+  }
+}
+
+// ── Plan de abonament ─────────────────────────────────────────────────────────
+
+// 'pro' și 'agency' (Business) => 'pro'; 'starter' => 'starter'; orice altceva => null
+export function normalizeTier(value: unknown): SubscriptionTier | null {
+  if (typeof value !== 'string') return null;
+  const v = value.trim().toLowerCase();
+  if (v === 'pro' || v === 'agency') return 'pro';
+  if (v === 'starter') return 'starter';
+  return null;
+}
+
+// Citește planul contului autentificat:
+//   1. tabelul `profiles` (coloana subscription_tier) — sursa principală
+//   2. app_metadata.subscription_tier din sesiune — rezervă
+//   3. implicit: 'starter'
+export async function fetchSubscriptionTier(): Promise<SubscriptionTier> {
+  if (!supabase) return 'starter';
+  try {
+    const { data } = await supabase.auth.getSession();
+    const user = data.session?.user;
+    if (!user) return 'starter';
+
+    const { data: row, error } = await supabase
+      .from('profiles')
+      .select('subscription_tier')
+      .eq('id', user.id)
+      .maybeSingle();
+
+    if (!error && row) {
+      const fromTable = normalizeTier((row as { subscription_tier?: unknown }).subscription_tier);
+      if (fromTable) return fromTable;
+    }
+
+    // app_metadata poate fi modificat doar server-side (spre deosebire de user_metadata)
+    return normalizeTier(user.app_metadata?.subscription_tier) ?? 'starter';
+  } catch {
+    return 'starter';
+  }
+}
+
+// Numărul de proiecte create de utilizator de la începutul lunii calendaristice curente
+// (maximul dintre Cloud și memoria locală a browserului).
+export async function countProjectsThisMonth(userEmail: string): Promise<number> {
+  const cleanEmail = userEmail.trim().toLowerCase();
+  const now = new Date();
+  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1).toISOString();
+
+  const localCount = readLocalProjects().filter(
+    (p) =>
+      (!p.userEmail || p.userEmail.toLowerCase() === cleanEmail) && p.createdAt >= monthStart,
+  ).length;
+
+  if (!supabase) return localCount;
+
+  try {
+    const { count, error } = await supabase
+      .from('projects')
+      .select('id', { count: 'exact', head: true })
+      .ilike('user_email', cleanEmail)
+      .gte('created_at', monthStart);
+
+    if (error) {
+      console.error('[SUCVAR] Supabase count error:', error);
+      return localCount;
+    }
+    return Math.max(localCount, count ?? 0);
+  } catch (err) {
+    console.error('[SUCVAR] Supabase count exception:', err);
+    return localCount;
   }
 }

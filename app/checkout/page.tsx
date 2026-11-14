@@ -1,7 +1,7 @@
 // app/checkout/page.tsx
 // Pagina afișată după „Continuă cu acest plan”.
-// Plățile cu card (Stripe) nu sunt încă integrate, deci pagina arată rezumatul
-// planului ales și un mesaj clar, fără formulare de plată.
+// Plata se face pe pagina securizată Stripe Checkout (Test Mode): butonul apelează
+// /api/checkout cu token-ul sesiunii și redirecționează utilizatorul către Stripe.
 "use client";
 
 import React, { useEffect, useState } from 'react';
@@ -9,6 +9,7 @@ import Link from 'next/link';
 import { ArrowLeft, ArrowRight, Check, ShieldCheck } from 'lucide-react';
 import Navbar from '@/app/components/Navbar';
 import { PRICING_PLANS, PricingPlan, getPlanById } from '@/app/data/catalog';
+import { getAccessToken } from '@/app/lib/supabase';
 import { getUi } from '@/app/lib/theme';
 import { Language, ThemeMode } from '@/app/types/studio';
 
@@ -19,10 +20,16 @@ export default function CheckoutPage() {
   const [lang, setLang] = useState<Language>('ro');
   const [theme, setTheme] = useState<ThemeMode>('light');
   const [plan, setPlan] = useState<PricingPlan>(PRICING_PLANS[1]);
+  const [isPaying, setIsPaying] = useState(false);
+  const [payError, setPayError] = useState<string | null>(null);
+  const [needsLogin, setNeedsLogin] = useState(false);
+  const [wasCanceled, setWasCanceled] = useState(false);
 
   // La încărcare: planul vine din adresă (?plan=pro); dacă lipsește, din planul salvat
   useEffect(() => {
-    const planFromUrl = new URLSearchParams(window.location.search).get('plan');
+    const params = new URLSearchParams(window.location.search);
+    const planFromUrl = params.get('plan');
+    setWasCanceled(params.get('canceled') === '1');
     const planFromStorage = window.localStorage.getItem(SELECTED_PLAN_KEY);
     const resolvedPlan = getPlanById(planFromUrl) ?? getPlanById(planFromStorage);
     if (resolvedPlan) {
@@ -41,6 +48,47 @@ export default function CheckoutPage() {
   const eyebrowClass = `text-[11px] uppercase tracking-[0.28em] ${ui.muted}`;
   const isFreePlan = plan.id === 'starter';
   const features = lang === 'ro' ? plan.featuresRo : plan.featuresEn;
+
+  // Apelează /api/checkout și duce utilizatorul pe pagina de plată Stripe
+  const handlePay = async () => {
+    if (isPaying || isFreePlan) return;
+    setIsPaying(true);
+    setPayError(null);
+    setNeedsLogin(false);
+    try {
+      const accessToken = await getAccessToken();
+      if (!accessToken) {
+        setNeedsLogin(true);
+        setPayError(
+          t(
+            'Autentifică-te cu un cont real pentru a plăti (profilurile Demo nu pot cumpăra).',
+            'Sign in with a real account to pay (Demo profiles cannot purchase).'
+          )
+        );
+        return;
+      }
+      const res = await fetch('/api/checkout', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Authorization: `Bearer ${accessToken}`,
+        },
+        body: JSON.stringify({ plan: plan.id }),
+      });
+      const data = await res.json().catch(() => ({}));
+      if (!res.ok || typeof data.url !== 'string') {
+        if (data.code === 'AUTH_REQUIRED' || data.code === 'AUTH_INVALID') {
+          setNeedsLogin(true);
+        }
+        throw new Error(data.error ?? t('Nu s-a putut porni plata.', 'Could not start the payment.'));
+      }
+      window.location.assign(data.url); // pagina securizată Stripe
+    } catch (err) {
+      setPayError(err instanceof Error ? err.message : 'Error');
+    } finally {
+      setIsPaying(false);
+    }
+  };
 
   return (
     <div className={`min-h-screen font-sans pb-24 transition-colors ${ui.page}`}>
@@ -70,14 +118,14 @@ export default function CheckoutPage() {
           </ul>
         </section>
 
-        {/* ---------- DREAPTA: mesajul „plăți în curând” ---------- */}
+        {/* ---------- DREAPTA: plata prin Stripe ---------- */}
         <section className={`lg:col-span-7 p-8 rounded-md border space-y-6 ${ui.card}`}>
           <div className="space-y-3">
             <p className={eyebrowClass}>Checkout</p>
             <h2 className="text-2xl font-semibold tracking-tight">
               {isFreePlan
                 ? t('Planul gratuit nu necesită plată', 'The free plan needs no payment')
-                : t('Plata va fi disponibilă în curând', 'Payments are coming soon')}
+                : t('Finalizează plata', 'Complete your payment')}
             </h2>
             <p className={`text-sm leading-relaxed ${ui.muted}`}>
               {isFreePlan
@@ -86,8 +134,8 @@ export default function CheckoutPage() {
                     'You can start right away, no card needed. Open Studio and create your first project.'
                   )
                 : t(
-                    'Sistemul de plăți securizate Stripe / Card este în curs de integrare pentru lansarea oficială SUCVAR 2026.',
-                    'The secure Stripe / Card payment system is being integrated for the official SUCVAR 2026 launch.'
+                    'Vei fi redirecționat către pagina securizată Stripe. Abonamentul se reînnoiește lunar și îl poți anula oricând.',
+                    'You will be redirected to the secure Stripe page. The subscription renews monthly and can be canceled anytime.'
                   )}
             </p>
           </div>
@@ -97,23 +145,61 @@ export default function CheckoutPage() {
               <ShieldCheck className={`w-4 h-4 mt-0.5 shrink-0 ${ui.accent}`} />
               <p>
                 {t(
-                  'Nu a fost încasată nicio sumă și nu ți-am cerut date de card. Între timp poți folosi Studio cu funcțiile planului gratuit.',
-                  'No amount has been charged and no card details were requested. Meanwhile you can use Studio with the free plan features.'
+                  'Mod test (Test Mode): nu se încasează bani reali. Folosește cardul de test 4242 4242 4242 4242, o dată de expirare viitoare și orice CVC.',
+                  'Test Mode: no real money is charged. Use the test card 4242 4242 4242 4242, any future expiry date and any CVC.'
                 )}
               </p>
             </div>
           )}
 
+          {wasCanceled && !isFreePlan && (
+            <p className={`text-xs ${ui.muted}`}>
+              {t('Plata a fost anulată. Nu ai fost taxat.', 'The payment was canceled. You were not charged.')}
+            </p>
+          )}
+
+          {payError && (
+            <p role="alert" className="text-xs text-red-600 font-medium">
+              {payError}
+            </p>
+          )}
+
           <div className="flex flex-wrap items-center gap-3">
-            <Link
-              href="/generate"
-              className={`inline-flex items-center gap-2 h-12 px-7 rounded-md text-xs font-semibold uppercase tracking-widest transition-colors touch-manipulation ${ui.btn}`}
-            >
-              <span>
-                {isFreePlan ? t('Începe gratuit', 'Start for free') : t('Încearcă în Studio', 'Try it in Studio')}
-              </span>
-              <ArrowRight className="w-4 h-4" />
-            </Link>
+            {isFreePlan ? (
+              <Link
+                href="/generate"
+                className={`inline-flex items-center gap-2 h-12 px-7 rounded-md text-xs font-semibold uppercase tracking-widest transition-colors touch-manipulation ${ui.btn}`}
+              >
+                <span>{t('Începe gratuit', 'Start for free')}</span>
+                <ArrowRight className="w-4 h-4" />
+              </Link>
+            ) : (
+              <button
+                type="button"
+                onClick={handlePay}
+                disabled={isPaying}
+                className={`inline-flex items-center gap-2 h-12 px-7 rounded-md text-xs font-semibold uppercase tracking-widest transition-colors disabled:opacity-50 cursor-pointer touch-manipulation ${ui.btn}`}
+              >
+                {isPaying && (
+                  <span className="inline-block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
+                )}
+                <span>
+                  {isPaying
+                    ? t('Se deschide Stripe…', 'Opening Stripe…')
+                    : t('Plătește cu cardul (Test Mode)', 'Pay by card (Test Mode)')}
+                </span>
+              </button>
+            )}
+
+            {needsLogin && (
+              <Link
+                href="/login"
+                className={`inline-flex items-center h-12 px-6 rounded-md border text-xs font-semibold uppercase tracking-widest transition-colors touch-manipulation ${ui.btnGhost}`}
+              >
+                {t('Autentifică-te', 'Sign in')}
+              </Link>
+            )}
+
             <Link
               href="/#pricing"
               className={`inline-flex items-center gap-2 h-12 px-6 rounded-md border text-xs font-semibold uppercase tracking-widest transition-colors touch-manipulation ${ui.btnGhost}`}
