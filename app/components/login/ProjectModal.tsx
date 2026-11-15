@@ -42,7 +42,7 @@ export default function ProjectModal({
 
   return (
     <div
-    className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
+    className="fixed inset-0 z-50 bg-black/60 backdrop-blur-sm flex items-center justify-center p-4 overflow-y-auto"
     onClick={onClose}
   >
     <div
@@ -62,7 +62,7 @@ export default function ProjectModal({
           type="button"
           onClick={onClose}
           aria-label="Close modal"
-          className={`p-2 rounded-md border cursor-pointer touch-manipulation ${ui.btnGhost}`}
+          className={`p-2 rounded-sm border cursor-pointer touch-manipulation ${ui.btnGhost}`}
         >
           <X className="w-4 h-4" />
         </button>
@@ -81,7 +81,7 @@ export default function ProjectModal({
           src={(project.generatedImage || project.originalImage) ?? ''}
           alt={project.title}
           referrerPolicy="no-referrer"
-          className="w-full max-h-[420px] object-cover rounded-md border border-stone-300/40"
+          className="w-full max-h-[420px] object-cover rounded-md border border-neutral-300/40"
         />
       ) : null}
 
@@ -118,7 +118,7 @@ export default function ProjectModal({
       {cost.lines.length > 0 && (
         <div className="space-y-2">
           <p className={eyebrowClass}>{t('Estimare cost orientativă', 'Indicative cost estimate')}</p>
-          <div className={`border rounded-md divide-y ${ui.line}`}>
+          <div className={`border rounded-sm divide-y ${ui.line}`}>
             {cost.lines.map((line) => (
               <div key={line.id} className="px-4 py-2.5 flex items-start justify-between gap-3">
                 <div className="min-w-0">
@@ -147,7 +147,7 @@ export default function ProjectModal({
         <p className={eyebrowClass}>
           {t('Specificații tehnice de producător', 'Manufacturer technical specifications')}
         </p>
-        <div className={`border rounded-md divide-y ${ui.line}`}>
+        <div className={`border rounded-sm divide-y ${ui.line}`}>
           {specs.map((item) => {
             const keywords = lang === 'ro' ? item.searchKeywordsRo : item.searchKeywordsEn;
             return (
@@ -169,11 +169,11 @@ export default function ProjectModal({
                   <button
                     type="button"
                     onClick={() => onCopyKeywords(item.id, keywords)}
-                    className={`h-7 px-2.5 rounded border text-[11px] inline-flex items-center gap-1 cursor-pointer touch-manipulation ${ui.btnGhost}`}
+                    className={`h-7 px-2.5 rounded-sm border text-[11px] inline-flex items-center gap-1 cursor-pointer touch-manipulation ${ui.btnGhost}`}
                   >
                     {copiedKeyId === item.id ? (
                       <>
-                        <Check className="w-3 h-3 text-green-500" />
+                        <Check className="w-3 h-3 text-current" />
                         <span>{t('Copiat', 'Copied')}</span>
                       </>
                     ) : (
@@ -195,7 +195,7 @@ export default function ProjectModal({
         <button
           type="button"
           onClick={() => onOpenInStudio(project)}
-          className={`inline-flex items-center gap-2 h-11 px-6 rounded-md text-xs font-semibold uppercase tracking-widest cursor-pointer touch-manipulation ${ui.btn}`}
+          className={`inline-flex items-center gap-2 h-11 px-6 rounded-sm text-xs font-semibold uppercase tracking-widest cursor-pointer touch-manipulation ${ui.btn}`}
         >
           <ExternalLink className="w-4 h-4" />
           <span>{t('Redeschide în Studio & Export PDF', 'Reopen in Studio & Export PDF')}</span>
@@ -203,7 +203,7 @@ export default function ProjectModal({
         <button
           type="button"
           onClick={onClose}
-          className={`h-11 px-5 rounded-md border text-xs font-semibold uppercase tracking-widest cursor-pointer touch-manipulation ${ui.btnGhost}`}
+          className={`h-11 px-5 rounded-sm border text-xs font-semibold uppercase tracking-widest cursor-pointer touch-manipulation ${ui.btnGhost}`}
         >
           {t('Închide', 'Close')}
         </button>

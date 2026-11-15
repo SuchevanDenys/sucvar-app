@@ -2,11 +2,12 @@
 // v2.2
 //   • token-ul Bearer este validat cu cheia service_role (cheia NU ajunge niciodată în browser)
 //   • planul se citește din `profiles`; 'pro' ȘI 'agency' => generări nelimitate (doar 'starter' are limită)
-//   • consumul lunar = proiectele din `projects` (+ `ai_generations`, dacă tabelul există)
+//   • consumul lunar = proiectele din `projects` (+ `ai_generations`, dacă tabelul există) — interogările sunt în db.ts
 //   • mesaje de configurare clare (ce variabilă lipsește)
-import type { SupabaseClient } from '@supabase/supabase-js';
+import 'server-only'; // Build eșuează dacă un component client importă acest modul (izolarea secretelor)
 import { getAdmin } from '@/app/lib/supabase/admin';
-import { PLAN_LIMITS, isUnlimitedTier, resolveEffectiveTier } from '@/app/lib/plan/tiers';
+import { PLAN_LIMITS, isUnlimitedTier } from '@/app/lib/plan/tiers';
+import { countGenerationsThisMonth, countProjectsThisMonth, getEffectiveSubscription, logGeneration } from './db';
 import type { PlanTier } from '@/app/types';
 
 export type ServerTier = PlanTier;
@@ -29,40 +30,6 @@ export type QuotaResult =
       used?: number;
       limit?: number;
     };
-
-// ── Configurare ──────────────────────────────────────────────────────────────
-
-function monthStartUtcIso(): string {
-  const d = new Date();
-  return new Date(Date.UTC(d.getUTCFullYear(), d.getUTCMonth(), 1)).toISOString();
-}
-
-// ── Contorizare ──────────────────────────────────────────────────────────────
-
-// Proiectele create în luna curentă (tabelul `projects` are `user_email`, nu `user_id`).
-// `.eq` (nu `.ilike`): în ILIKE caracterul „_” din email ar fi tratat ca wildcard.
-// Emailurile se salvează deja cu litere mici (vezi toRow în supabase.ts).
-async function countProjectsThisMonth(admin: SupabaseClient, email: string): Promise<number> {
-  const { count, error } = await admin
-    .from('projects')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_email', email.toLowerCase())
-    .gte('created_at', monthStartUtcIso());
-  if (error) throw error;
-  return count ?? 0;
-}
-
-// Generările înregistrate de server. Tabelul este opțional (vezi sql/ai_generations.sql):
-// dacă nu există, ignorăm eroarea și numărăm doar proiectele.
-async function countLoggedGenerations(admin: SupabaseClient, userId: string): Promise<number> {
-  const { count, error } = await admin
-    .from('ai_generations')
-    .select('id', { count: 'exact', head: true })
-    .eq('user_id', userId)
-    .gte('created_at', monthStartUtcIso());
-  if (error) return 0;
-  return count ?? 0;
-}
 
 // ── Verificarea principală (apelată la începutul lui /api/generate) ──────────
 
@@ -124,21 +91,8 @@ export async function checkGenerationQuota(request: Request): Promise<QuotaResul
   const userId = userData.user.id;
   const email = (userData.user.email ?? '').toLowerCase();
 
-  // 3. Planul din `profiles`
-  const { data: profile, error: profileError } = await admin
-    .from('profiles')
-    .select('subscription_tier, current_period_end')
-    .eq('id', userId)
-    .maybeSingle();
-
-  if (profileError) {
-    // Fail-safe: dacă nu putem citi planul, aplicăm regulile planului gratuit
-    console.error('[SUCVAR] Citire profiles eșuată:', profileError.message);
-  }
-
-  // Abonament plătit expirat (current_period_end < acum) => 'starter', chiar dacă webhook-ul
-  // de anulare nu a ajuns încă. Fără dată (conturi vechi) planul rămâne neschimbat.
-  const tier = resolveEffectiveTier(profile?.subscription_tier, profile?.current_period_end);
+  // 3. Planul EFECTIV din `profiles` (db.ts): abonament expirat => 'starter'; fail-safe la eroare de citire
+  const { tier } = await getEffectiveSubscription(userId);
 
   // 'pro' și 'agency' => nelimitat (doar 'starter' are limita lunară)
   if (isUnlimitedTier(tier)) {
@@ -149,8 +103,8 @@ export async function checkGenerationQuota(request: Request): Promise<QuotaResul
   let used = 0;
   try {
     const [projects, logged] = await Promise.all([
-      email ? countProjectsThisMonth(admin, email) : Promise.resolve(0),
-      countLoggedGenerations(admin, userId),
+      countProjectsThisMonth(userId, email),
+      countGenerationsThisMonth(userId),
     ]);
     used = Math.max(projects, logged);
   } catch (err) {
@@ -177,13 +131,12 @@ export async function checkGenerationQuota(request: Request): Promise<QuotaResul
   return { ok: true, userId, email, isPro: false, isAgency: false, tier: 'starter' };
 }
 
-// Se apelează DUPĂ o generare reușită. Tabelul `ai_generations` este opțional.
-export async function recordServerGeneration(userId: string | null): Promise<void> {
+// Se apelează DUPĂ o generare reușită. Tabelul `ai_generations` este opțional (db.ts îl tolerează).
+export async function recordServerGeneration(userId: string | null, meta: { provider?: string; mode?: string } = {}): Promise<void> {
   if (!userId) return;
-  const { client: admin } = getAdmin();
-  if (!admin) return;
-  const { error } = await admin.from('ai_generations').insert({ user_id: userId });
-  if (error) {
-    console.warn('[SUCVAR] ai_generations nu a putut fi scris (tabel lipsă?):', error.message);
+  try {
+    await logGeneration(userId, meta);
+  } catch (err) {
+    console.warn('[SUCVAR] Jurnalul de generări nu a putut fi scris:', err);
   }
 }

@@ -1,8 +1,8 @@
 // app/lib/studio/validation.ts
 // Validarea și curățarea cotelor camerei. Folosită la introducerea datelor în Studio,
 // la restaurarea unui proiect din arhivă și la citirea rândurilor din Supabase.
-import { getLayout, getSpace } from '@/app/data/catalog';
-import type { BudgetTier, DesignMode, Language, RoomDimensions } from '@/app/types';
+import { DEFAULT_SCOPE, SCOPES, getLayout, getSpace, sanitizeFocusIds } from '@/app/data/catalog';
+import type { BudgetTier, DesignMode, Language, RoomDimensions, ScopeLevel } from '@/app/types';
 
 // Limitele acceptate pentru cote (metri / bucăți)
 export const DIMENSION_LIMITS = {
@@ -33,6 +33,8 @@ export const DEFAULT_DIMENSIONS: RoomDimensions = {
   aiStrength: 75,
   layoutPreset: '',
   budget: 'standard',
+  scope: DEFAULT_SCOPE,
+  focusIds: [],
 };
 
 const clamp = (value: number, min: number, max: number) => Math.min(max, Math.max(min, value));
@@ -77,6 +79,10 @@ export function sanitizeDimensions(
     aiStrength: Math.round(clamp(toNumber(source.aiStrength, DEFAULT_DIMENSIONS.aiStrength), 40, 100)),
     layoutPreset: getLayout(space, layoutId).id,
     budget: BUDGETS.includes(source.budget as BudgetTier) ? (source.budget as BudgetTier) : 'standard',
+    // Proiectele salvate înainte de această opțiune primesc „Renovare Completă” (referința devizului)
+    scope: SCOPES.some((o) => o.id === source.scope) ? (source.scope as ScopeLevel) : DEFAULT_SCOPE,
+    // Scenariile care nu aparțin spațiului ales (date vechi) sunt eliminate
+    focusIds: sanitizeFocusIds(space, source.focusIds),
   };
 }
 

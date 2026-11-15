@@ -4,6 +4,7 @@
 
 import React, { useEffect, useRef, useState } from 'react';
 import { Check, ChevronDown } from 'lucide-react';
+import StyleSpecCard from '@/app/components/studio/StyleSpecCard';
 import { VISUAL_STYLES } from '@/app/data/catalog';
 import { EYEBROW, getSkin, swatchClass } from '@/app/lib/theme/skin';
 import type { Language } from '@/app/types';
@@ -52,7 +53,7 @@ export default function StylePicker({ lang, isDark, selectedStyleId, onSelect }:
   const swatch = swatchClass(isDark, 'sm');
 
   return (
-  <section className={`border rounded-sm relative z-30 ${sk.card}`} ref={dropdownRef}>
+  <section className={`border rounded-md relative z-30 ${sk.card}`} ref={dropdownRef}>
     <div className={`px-4 h-9 flex items-center border-b ${sk.line} ${eyebrow}`}>
       03 · {t('Stil arhitectural', 'Architectural style')}
     </div>
@@ -68,7 +69,7 @@ export default function StylePicker({ lang, isDark, selectedStyleId, onSelect }:
               onClick={() => handleSelect(v.id)}
               aria-pressed={active}
               className={`group inline-flex h-10 items-center gap-2 rounded-sm border px-3 text-xs whitespace-nowrap cursor-pointer touch-manipulation active:scale-[0.97] transition-[background-color,border-color,transform] ${
-                active ? `${sk.segOn} ${isDark ? 'border-emerald-400/60' : 'border-emerald-600/70'}` : `${sk.line} ${sk.segOff}`
+                active ? `${sk.segOn} ${isDark ? 'border-white' : 'border-[#111111]'}` : `${sk.line} ${sk.segOff}`
               }`}
             >
               <span className="flex gap-0.5">
@@ -101,7 +102,7 @@ export default function StylePicker({ lang, isDark, selectedStyleId, onSelect }:
         </button>
 
         {isStyleMenuOpen && (
-          <ul role="listbox" className={`absolute left-0 right-0 mt-1 rounded-sm border z-50 max-h-72 overflow-y-auto shadow-xl ${sk.popover}`}>
+          <ul role="listbox" className={`absolute left-0 right-0 mt-1 rounded-md border z-50 max-h-72 overflow-y-auto shadow-xl ${sk.popover}`}>
             {VISUAL_STYLES.map((s) => (
               <li key={s.id} role="option" aria-selected={s.id === selectedStyleId}>
                 <button type="button" onClick={() => handleSelect(s.id)} className={styleOptCls(s.id === selectedStyleId)}>
@@ -123,12 +124,8 @@ export default function StylePicker({ lang, isDark, selectedStyleId, onSelect }:
         )}
       </div>
       <p className={`text-xs leading-relaxed ${sk.muted}`}>{styleDesc}</p>
-      <p className={`text-[11px] leading-relaxed ${sk.dim}`}>
-        {(lang === 'ro' ? currentStyle.materialsRo : currentStyle.materialsEn).join(' · ')}
-      </p>
-      <p className={`text-[11px] font-mono ${sk.dim}`}>
-        {currentStyle.palette.map((c) => (lang === 'ro' ? c.nameRo : c.nameEn)).join(' / ')}
-      </p>
+      {/* Fișa tehnică: paletă, materiale, iluminare, cost, brief */}
+      <StyleSpecCard style={currentStyle} lang={lang} isDark={isDark} />
     </div>
   </section>
   );

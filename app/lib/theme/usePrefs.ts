@@ -19,7 +19,7 @@ export interface Prefs {
 }
 
 export function usePrefs(): Prefs {
-  const theme: ThemeMode = useStoredValue(STORAGE_KEYS.theme) === 'light' ? 'light' : 'dark';
+  const theme: ThemeMode = useStoredValue(STORAGE_KEYS.theme) === 'dark' ? 'dark' : 'light'; // light gallery = default
   const lang: Language = useStoredValue(STORAGE_KEYS.lang) === 'en' ? 'en' : 'ro';
 
   useEffect(() => {

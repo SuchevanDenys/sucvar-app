@@ -1,7 +1,7 @@
 // app/lib/ai/prompt.ts
 // Construiește textul (promptul) trimis modelului, din alegerile făcute în Studio.
 // Este independent de furnizor: același prompt merge cu Stable Diffusion sau Replicate.
-import { SPACE_MODES, VISUAL_STYLES } from '@/app/data/catalog';
+import { SPACE_MODES, VISUAL_STYLES, buildScenarioPrompt, getScope, sanitizeFocusIds } from '@/app/data/catalog';
 import { AiSettings, DesignMode } from '@/app/types';
 
 export interface PromptInput {
@@ -9,6 +9,9 @@ export interface PromptInput {
   spaceType: string;
   styleId: string;
   layoutPreset: string;
+  /** Scenarii (chips) și nivel de intervenție; opționale pentru compatibilitate */
+  focusIds?: string[];
+  scope?: string;
   width: number;
   length: number;
   settings: AiSettings;
@@ -36,6 +39,11 @@ export function buildPrompt(input: PromptInput): BuiltPrompt {
   const parts = [
     `Professional architectural photography of a ${space} (${areaText} sqm)`,
     layout.prompt,
+    // Scenariile alese + nivelul de intervenție
+    buildScenarioPrompt(currentSpace, sanitizeFocusIds(currentSpace, input.focusIds)),
+    getScope(input.scope).prompt,
+    // Materiale + iluminare din fișa tehnică a stilului (app/data/styleSpecs.ts)
+    style.promptSpec,
     style.prompt,
     'ultra-detailed, 8k resolution',
   ];

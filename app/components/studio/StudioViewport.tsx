@@ -4,20 +4,13 @@
 
 import React from 'react';
 import BeforeAfterSlider from '@/app/components/ui/BeforeAfterSlider';
-import { Corners } from '@/app/components/ui/Editorial';
 import { EYEBROW, getSkin } from '@/app/lib/theme/skin';
 
 /** Reticul CAD: cruce centrală + repere în colțurile viewport-ului (decor, fără interacțiune). */
 function CadCrosshair({ isDark }: { isDark: boolean }) {
-  const c = isDark ? 'bg-emerald-300/70' : 'bg-emerald-700/60';
-  const b = isDark ? 'border-emerald-300/70' : 'border-emerald-700/60';
-  const corner = `absolute h-4 w-4 ${b}`;
+  const c = isDark ? 'bg-white/70' : 'bg-[#111111]/60';
   return (
     <div aria-hidden className="pointer-events-none absolute inset-0 z-10">
-      <span className={`${corner} left-2 top-2 border-l border-t`} />
-      <span className={`${corner} right-2 top-2 border-r border-t`} />
-      <span className={`${corner} bottom-2 left-2 border-b border-l`} />
-      <span className={`${corner} bottom-2 right-2 border-b border-r`} />
       <span className={`absolute left-1/2 top-1/2 h-px w-4 -translate-x-1/2 ${c}`} />
       <span className={`absolute left-1/2 top-1/2 h-4 w-px -translate-y-1/2 ${c}`} />
     </div>
@@ -42,8 +35,7 @@ export default function StudioViewport({ lang, isDark, originalImage, generatedI
   const t = (ro: string, en: string) => (lang === 'ro' ? ro : en);
   const eyebrow = `${EYEBROW} ${sk.dim}`;
   return (
-  <div className={`relative border rounded-sm p-1.5 ${sk.card}`}>
-    <Corners isDark={isDark} />
+  <div className={`relative border rounded-md p-1.5 ${sk.card}`}>
     <div className={`flex items-center justify-between px-2 pb-1.5 ${eyebrow}`}>
       <span>Viewport // {generatedImage ? 'render' : 'idle'}</span>
       <span className="tabular-nums">{issueDate || '— — —'}</span>
@@ -51,7 +43,7 @@ export default function StudioViewport({ lang, isDark, originalImage, generatedI
 
     {originalImage && generatedImage ? (
       <div className="space-y-3">
-        <div className="relative rounded-[2px] overflow-hidden">
+        <div className="relative rounded-md overflow-hidden">
           <CadCrosshair isDark={isDark} />
           <BeforeAfterSlider
             beforeImg={originalImage}
@@ -72,7 +64,7 @@ export default function StudioViewport({ lang, isDark, originalImage, generatedI
         )}
       </div>
     ) : (
-      <div className={`relative h-64 sm:h-80 rounded-[2px] overflow-hidden flex items-center justify-center text-sm ${sk.grid} ${sk.muted}`}>
+      <div className={`relative h-64 sm:h-80 rounded-md overflow-hidden flex items-center justify-center text-sm ${sk.grid} ${sk.muted}`}>
         {/* Fotografia sursă rămâne vizibilă sub linia de scanare în timpul generării */}
         {originalImage && (
           // eslint-disable-next-line @next/next/no-img-element
@@ -80,7 +72,7 @@ export default function StudioViewport({ lang, isDark, originalImage, generatedI
         )}
         <CadCrosshair isDark={isDark} />
         {isLoading && <div aria-hidden className="scan-line z-10" />}
-        <span className={`relative z-20 flex flex-col items-center gap-3 px-3 py-2 ${originalImage ? 'bg-black/60 text-zinc-100 backdrop-blur-sm' : ''}`} role="status">
+        <span className={`relative z-20 flex flex-col items-center gap-3 px-3 py-2 ${originalImage ? 'bg-[#0B0B0C]/60 text-[#F5F5F5] backdrop-blur-sm' : ''}`} role="status">
           {isLoading && <span className="inline-block w-4 h-4 rounded-full border-2 border-current border-t-transparent animate-spin" />}
           <span className={`${EYEBROW} text-center`}>
             {isLoading ? loadingLabel : originalImage ? t('Gata de randare.', 'Ready to render.') : t('Rezultatul apare aici după generare.', 'Your result appears here after generation.')}

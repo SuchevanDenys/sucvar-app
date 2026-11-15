@@ -5,17 +5,12 @@
 // Ambele scriu aceleași coloane din `profiles` (subscription_tier, stripe_customer_id,
 // stripe_subscription_id, updated_at), iar operația este idempotentă: rulată de două ori
 // cu aceeași sesiune, a doua rulare nu schimbă nimic.
+import 'server-only'; // Build eșuează dacă un component client importă acest modul (izolarea secretelor)
 import type Stripe from 'stripe';
-import { getAdmin } from '@/app/lib/supabase/admin';
 import { isPaidPlan, type PaidPlanId } from '@/app/lib/billing/stripe';
 import { normalizeInterval } from '@/app/lib/plan/tiers';
+import { activateProfilePlan, getCurrentSubscriptionId } from './db';
 import type { BillingInterval, PlanTier } from '@/app/types';
-
-function getAdminOrThrow() {
-  const { client: admin } = getAdmin();
-  if (!admin) throw new Error('Supabase admin neconfigurat (SUPABASE_SERVICE_ROLE_KEY).');
-  return admin;
-}
 
 // Stripe poate returna fie id-ul (string), fie obiectul expandat
 export function idOf(value: string | { id: string } | null | undefined): string | null {
@@ -50,7 +45,7 @@ export function readPeriod(subscription: Stripe.Subscription): SubscriptionPerio
   };
 }
 
-// Setează planul + id-urile Stripe + perioada pentru un utilizator
+// Setează planul + id-urile Stripe + perioada pentru un utilizator (scrierea e în db.ts)
 export async function activatePlan(
   userId: string,
   tier: PlanTier,
@@ -58,38 +53,10 @@ export async function activatePlan(
   subscriptionId: string | null,
   period?: SubscriptionPeriod | null
 ): Promise<{ previousSubscriptionId: string | null }> {
-  const admin = getAdminOrThrow();
-
-  const { data: current } = await admin
-    .from('profiles')
-    .select('stripe_subscription_id')
-    .eq('id', userId)
-    .maybeSingle();
-
-  const { data, error } = await admin
-    .from('profiles')
-    .update({
-      subscription_tier: tier,
-      ...(customerId ? { stripe_customer_id: customerId } : {}),
-      ...(subscriptionId ? { stripe_subscription_id: subscriptionId } : {}),
-      ...(period
-        ? {
-            current_period_end: period.currentPeriodEnd,
-            billing_interval: period.interval,
-            cancel_at_period_end: period.cancelAtPeriodEnd,
-          }
-        : {}),
-      updated_at: new Date().toISOString(),
-    })
-    .eq('id', userId)
-    .select('id');
-
-  if (error) throw new Error(`Actualizare profiles eșuată: ${error.message}`);
-  if (!data || data.length === 0) {
-    throw new Error(`Nu există rând în profiles pentru utilizatorul ${userId}.`);
-  }
+  const previousSubscriptionId = await getCurrentSubscriptionId(userId);
+  await activateProfilePlan(userId, { tier, customerId, subscriptionId, period });
   console.log(`[SUCVAR] ${userId} -> ${tier}`);
-  return { previousSubscriptionId: current?.stripe_subscription_id ?? null };
+  return { previousSubscriptionId };
 }
 
 export interface PaidSession {
@@ -150,13 +117,8 @@ export async function syncActiveSubscription(subscription: Stripe.Subscription):
   const plan = subscription.metadata?.plan;
   if (!userId || !isPaidPlan(plan)) return false;
 
-  const admin = getAdminOrThrow();
-  const { data: profile } = await admin
-    .from('profiles')
-    .select('stripe_subscription_id')
-    .eq('id', userId)
-    .maybeSingle();
-  if (profile?.stripe_subscription_id && profile.stripe_subscription_id !== subscription.id) return false;
+  const currentId = await getCurrentSubscriptionId(userId);
+  if (currentId && currentId !== subscription.id) return false;
 
   await activatePlan(
     userId,

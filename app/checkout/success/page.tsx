@@ -111,7 +111,7 @@ export default function CheckoutSuccessPage() {
               <p className={`text-sm ${ui.muted}`}>
                 {t('Planul tău este activ. Te redirecționăm…', 'Your plan is active. Redirecting…')}
               </p>
-              <Link href={target} className={`inline-flex items-center h-11 px-6 rounded-md text-xs font-semibold uppercase tracking-widest ${ui.btn}`}>
+              <Link href={target} className={`inline-flex items-center h-11 px-6 rounded-sm text-xs font-semibold uppercase tracking-widest ${ui.btn}`}>
                 {t('Continuă', 'Continue')}
               </Link>
             </>
@@ -130,10 +130,10 @@ export default function CheckoutSuccessPage() {
                   )}
               </p>
               <div className="flex justify-center gap-3">
-                <Link href="/login" className={`inline-flex items-center h-11 px-6 rounded-md border text-xs font-semibold uppercase tracking-widest ${ui.btnGhost}`}>
+                <Link href="/login" className={`inline-flex items-center h-11 px-6 rounded-sm border text-xs font-semibold uppercase tracking-widest ${ui.btnGhost}`}>
                   {t('Autentifică-te', 'Sign in')}
                 </Link>
-                <Link href="/generate" className={`inline-flex items-center h-11 px-6 rounded-md text-xs font-semibold uppercase tracking-widest ${ui.btn}`}>
+                <Link href="/generate" className={`inline-flex items-center h-11 px-6 rounded-sm text-xs font-semibold uppercase tracking-widest ${ui.btn}`}>
                   {t('Mergi la Studio', 'Go to Studio')}
                 </Link>
               </div>

@@ -8,13 +8,17 @@ import Replicate from 'replicate';
 import sharp from 'sharp';
 import {
   SPACE_MODES,
+  buildScenarioPrompt,
   getLayout,
+  getScope,
   getSpace,
+  sanitizeFocusIds,
   getStyle,
 } from '@/app/data/catalog';
 import { AI_LIMITS, DEFAULT_AI_SETTINGS } from '@/app/lib/ai/config';
-import { BudgetTier, DesignMode } from '@/app/types';
+import { BudgetTier, DesignMode, VisualStyle } from '@/app/types';
 import { checkGenerationQuota, recordServerGeneration } from '@/app/lib/server/quota';
+import { checkRateLimit, clientIp, readBodyText, tooManyRequests } from '@/app/lib/server/http';
 
 // sharp needs the Node.js runtime (not Edge)
 export const maxDuration = 60;
@@ -45,6 +49,19 @@ const DEMO_IMAGES: Record<string, string> = {
   gardens:
     'https://images.unsplash.com/photo-1584622650111-993a426fbf0a?auto=format&fit=crop&w=1400&q=85',
 };
+
+// Limite pentru dimensiunile fotografiei (pixeli). Blochează imagini minuscule (inutile pentru
+// ControlNet) și „decompression bombs" (PNG mic ca fișier, dar uriaș ca rezoluție).
+const MIN_IMAGE_SIDE = 64;
+const MAX_IMAGE_SIDE = 8192;
+const MAX_IMAGE_PIXELS = 40_000_000;
+// Plafon pentru corpul JSON: fotografia + câmpurile text (marjă de 100 KB)
+const MAX_BODY_BYTES = MAX_IMAGE_LENGTH + 100_000;
+
+// Limite de rată: pe IP (înainte de autentificare — oprește abuzul anonim / forța brută pe tokenuri)
+// și pe utilizator (după autentificare — o generare costă bani reali la Replicate).
+const RATE_IP = { name: 'generate:ip', limit: 30, windowSeconds: 60 } as const;
+const RATE_USER = { name: 'generate:user', limit: 6, windowSeconds: 60 } as const;
 
 const BUDGET_TIERS: BudgetTier[] = ['economy', 'standard', 'luxury'];
 
@@ -180,6 +197,18 @@ function cleanStylePrompt(stylePrompt: string, mode: DesignMode): string {
   return withoutTail.replace(/\binterior\s+/gi, '');
 }
 
+// Fragmentul tehnic al stilului (materiale + iluminare), în engleză, din `style.promptSpec`.
+// Pentru fațade și grădini scoatem termenii de interior (parchet, lambriu, plafon etc.)
+// și păstrăm doar numele stilului și lumina naturală.
+function getStyleSpecPrompt(style: VisualStyle, mode: DesignMode): string {
+  if (mode === 'interiors') {
+    return style.promptSpec;
+  }
+  // primul termen = numele stilului; ultimul = temperatura de culoare a luminii
+  const terms = style.promptSpec.split(',').map((term) => term.trim());
+  return [terms[0], terms[terms.length - 1]].join(', ');
+}
+
 // Always-on negative terms. For interiors we add "empty room" terms to force furniture.
 function getMandatoryNegatives(mode: DesignMode): string {
   const common =
@@ -263,7 +292,11 @@ async function toPermanentJpegDataUrl(sourceUrl: string): Promise<string> {
 //  7. convertește rezultatul într-un JPEG Base64 permanent.
 export async function POST(request: Request) {
   try {
-    // 0. Sesiune + plan + limită lunară — ÎNAINTE de orice altă muncă
+    // 0a. Limită pe IP, înainte de orice apel către Supabase
+    const ipWait = checkRateLimit(RATE_IP, clientIp(request));
+    if (ipWait !== null) return tooManyRequests(ipWait);
+
+    // 0b. Sesiune + plan + limită lunară — ÎNAINTE de orice altă muncă
     //    (nu mai citim un body de câțiva MB pentru cereri respinse).
     const quota = await checkGenerationQuota(request);
     if (!quota.ok) {
@@ -273,28 +306,58 @@ export async function POST(request: Request) {
       );
     }
 
-    // Un body care nu este JSON valid este o eroare a clientului (400), nu a serverului
+    // 0c. Limită pe utilizator (anonimii, doar în dev, rămân pe IP)
+    const userWait = checkRateLimit(RATE_USER, quota.userId ?? clientIp(request));
+    if (userWait !== null) return tooManyRequests(userWait);
+
+    // Corp cu plafon dur de dimensiune (413), apoi JSON; JSON invalid = eroare de client (400)
+    const raw = await readBodyText(request, MAX_BODY_BYTES);
+    if (!raw.ok) return raw.response;
     let body: unknown;
     try {
-      body = await request.json();
+      body = JSON.parse(raw.text);
     } catch {
-      return NextResponse.json({ error: 'Cerere invalidă (JSON incorect).' }, { status: 400 });
+      return NextResponse.json({ error: 'Cerere invalidă (JSON incorect).', code: 'INVALID_JSON' }, { status: 400 });
     }
     const payload = isRecord(body) ? body : {};
 
     // 1. Validate the photo
     const image = payload.image;
     if (typeof image !== 'string' || !image.startsWith('data:image/')) {
-      return NextResponse.json({ error: 'Lipsește fotografia spațiului.' }, { status: 400 });
+      return NextResponse.json({ error: 'Lipsește fotografia spațiului.', code: 'IMAGE_REQUIRED' }, { status: 400 });
     }
     if (image.length > MAX_IMAGE_LENGTH) {
-      return NextResponse.json({ error: 'Fotografia este prea mare.' }, { status: 413 });
+      return NextResponse.json({ error: 'Fotografia este prea mare.', code: 'IMAGE_TOO_LARGE' }, { status: 413 });
     }
     if (!IMAGE_DATA_URL.test(image)) {
       return NextResponse.json(
-        { error: 'Format de fotografie neacceptat (folosește JPEG, PNG sau WebP).' },
+        { error: 'Format de fotografie neacceptat (folosește JPEG, PNG sau WebP).', code: 'IMAGE_FORMAT' },
         { status: 415 }
       );
+    }
+
+    // 1b. Decodăm antetul imaginii: format real (nu doar prefixul Data URL) + dimensiuni în limite
+    try {
+      const meta = await sharp(Buffer.from(image.slice(image.indexOf(',') + 1), 'base64'), {
+        limitInputPixels: MAX_IMAGE_PIXELS,
+      }).metadata();
+      const { width = 0, height = 0 } = meta;
+      if (!['jpeg', 'png', 'webp'].includes(meta.format ?? '')) throw new Error('format');
+      if (
+        Math.min(width, height) < MIN_IMAGE_SIDE ||
+        Math.max(width, height) > MAX_IMAGE_SIDE ||
+        width * height > MAX_IMAGE_PIXELS
+      ) {
+        return NextResponse.json(
+          {
+            code: 'IMAGE_DIMENSIONS',
+            error: `Dimensiuni invalide: fotografia trebuie să aibă între ${MIN_IMAGE_SIDE} și ${MAX_IMAGE_SIDE} px pe latură.`,
+          },
+          { status: 422 }
+        );
+      }
+    } catch {
+      return NextResponse.json({ error: 'Fotografia este coruptă sau nu poate fi citită.', code: 'IMAGE_CORRUPT' }, { status: 415 });
     }
 
     // 2. Resolve mode → space → layout. Each step falls back INSIDE the previous one,
@@ -309,6 +372,9 @@ export async function POST(request: Request) {
       typeof dimensions.layoutPreset === 'string' ? dimensions.layoutPreset : null
     );
     const style = getStyle(typeof payload.styleId === 'string' ? payload.styleId : null);
+    // Scenarii (chips) validate față de spațiul ales + nivelul de intervenție (scope)
+    const scenarioPrompt = buildScenarioPrompt(space, sanitizeFocusIds(space, dimensions.focusIds));
+    const scopePrompt = getScope(dimensions.scope).prompt;
 
     const budget: BudgetTier = isBudgetTier(dimensions.budget) ? dimensions.budget : 'standard';
     const windowsCount = readNumber(dimensions.windowsCount, 0, 50, 2);
@@ -343,10 +409,18 @@ export async function POST(request: Request) {
         : Math.floor(readNumber(aiInput.seed, 0, AI_LIMITS.seedMax, 0));
 
     // 4. Build the prompt. Order = priority (the model reads the beginning best):
-    //    furnished scene → style → user's extra text → layout → materials → light → quality
+    //    furnished scene → scenarios + scope → style → user's extra text → layout → materials → light → quality
     const finalPrompt = buildPrompt(
       [
         space.scenePrompt,
+        // Scenariile alese de utilizator și nivelul de intervenție au prioritate imediat după
+        // scenă: sunt cerințele explicite ale proiectului, deci nu trebuie să fie tăiate de buget.
+        scenarioPrompt,
+        scopePrompt,
+        // Fișa tehnică a stilului (materiale + temperatură de culoare) — vezi app/data/styleSpecs.ts.
+        // Stă ÎNAINTEA promptului generic al stilului: dacă bugetul CLIP se termină, se taie
+        // textul generic, nu materialele reale ale stilului.
+        getStyleSpecPrompt(style, mode),
         cleanStylePrompt(style.prompt, mode),
         extraPrompt,
         layout.prompt,
@@ -403,7 +477,7 @@ export async function POST(request: Request) {
 
     const replicateUrl = getImageUrl(output);
     if (!replicateUrl) {
-      return NextResponse.json({ error: 'Modelul AI nu a returnat nicio imagine.' }, { status: 502 });
+      return NextResponse.json({ error: 'Modelul AI nu a returnat nicio imagine.', code: 'AI_NO_IMAGE' }, { status: 502 });
     }
 
     // Replicate returned an image -> the generation is paid for, so we log it
@@ -432,10 +506,12 @@ export async function POST(request: Request) {
       ...(warning ? { warning } : {}),
     });
   } catch (error) {
-    let message = 'AI Server Error';
-    if (error instanceof Error) {
-      message = error.message;
-    }
-    return NextResponse.json({ error: message }, { status: 500 });
+    // Detaliile erorii rămân în jurnalul serverului; clientul primește un mesaj generic
+    // (mesajele brute pot dezvălui furnizorul, token-uri parțiale sau căi interne).
+    console.error('[SUCVAR] Eroare /api/generate:', error);
+    return NextResponse.json(
+      { error: 'Generarea a eșuat. Încearcă din nou în câteva momente.', code: 'GENERATION_FAILED' },
+      { status: 500 }
+    );
   }
 }

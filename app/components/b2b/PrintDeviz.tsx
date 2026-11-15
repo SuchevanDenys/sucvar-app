@@ -62,7 +62,7 @@ export default function PrintDeviz({ isRo, docNo, printDate, project, projectNam
   return (
     <section className="hidden print:block bg-white text-[#1A1A1A] text-[11px] leading-snug">
       {/* Antet arhitectural */}
-      <header className="flex items-start justify-between border-b-2 border-[#3B4D43] pb-4">
+      <header className="flex items-start justify-between border-b-2 border-[#111111] pb-4">
         <SucvarLogo size={36} withWordmark />
         <div className="text-right">
           <p className="text-sm font-semibold uppercase tracking-[0.2em]">{t('Deviz tehnic · Ofertă', 'Technical estimate · Offer')}</p>
@@ -113,7 +113,7 @@ export default function PrintDeviz({ isRo, docNo, printDate, project, projectNam
       )}
 
       {/* Materiale pe categorii */}
-      <h2 className="mt-6 mb-1.5 uppercase tracking-[0.18em] text-[10px] font-semibold text-[#3B4D43]">{t('1. Materiale', '1. Materials')}</h2>
+      <h2 className="mt-6 mb-1.5 uppercase tracking-[0.18em] text-[10px] font-semibold text-[#111111]">{t('1. Materiale', '1. Materials')}</h2>
       <table className="w-full border border-stone-300">
         <thead>
           <tr className="bg-stone-100 text-left">
@@ -152,7 +152,7 @@ export default function PrintDeviz({ isRo, docNo, printDate, project, projectNam
       </table>
 
       {/* Manoperă */}
-      <h2 className="mt-6 mb-1.5 uppercase tracking-[0.18em] text-[10px] font-semibold text-[#3B4D43]">{t('2. Manoperă', '2. Labour')}</h2>
+      <h2 className="mt-6 mb-1.5 uppercase tracking-[0.18em] text-[10px] font-semibold text-[#111111]">{t('2. Manoperă', '2. Labour')}</h2>
       <table className="w-full border border-stone-300 break-inside-avoid">
         <thead>
           <tr className="bg-stone-100 text-left">
@@ -192,7 +192,7 @@ export default function PrintDeviz({ isRo, docNo, printDate, project, projectNam
             <tr><td className="p-2">{t('Marjă', 'Margin')} {totals.marginPct}%</td><td className={num}>{eur(totals.margin)}</td></tr>
             <tr className="border-t border-stone-300 font-semibold"><td className="p-2">{t('Total fără TVA', 'Net total')}</td><td className={num}>{eur(totals.net)}</td></tr>
             <tr><td className="p-2">{t('TVA', 'VAT')} {totals.vat}%</td><td className={num}>{eur(totals.vatAmt)}</td></tr>
-            <tr className="bg-[#3B4D43] text-white font-semibold text-xs"><td className="p-2">{t('Total cu TVA', 'Gross total')}</td><td className={num}>{eur(totals.gross)}</td></tr>
+            <tr className="bg-[#111111] text-white font-semibold text-xs"><td className="p-2">{t('Total cu TVA', 'Gross total')}</td><td className={num}>{eur(totals.gross)}</td></tr>
           </tbody>
         </table>
       </div>

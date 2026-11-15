@@ -6,7 +6,7 @@ import React from 'react';
 import Link from 'next/link';
 import { ArrowRight, CalendarRange, Calculator, FileText, Lock, Percent } from 'lucide-react';
 import Navbar from '@/app/components/layout/Navbar';
-import { Corners, LiveDot } from '@/app/components/ui/Editorial';
+import { LiveDot } from '@/app/components/ui/Editorial';
 import { EYEBROW, getSkin } from '@/app/lib/theme/skin';
 import { usePrefs } from '@/app/lib/theme/usePrefs';
 
@@ -15,7 +15,7 @@ export default function EnterpriseGate({ isSignedIn, planId }: { isSignedIn: boo
   const sk = getSkin(isDark);
   const t = (ro: string, en: string) => (isRo ? ro : en);
   const eyebrow = `${EYEBROW} ${sk.dim}`;
-  const panel = `relative border rounded-sm ${sk.card}`;
+  const panel = `relative border rounded-md ${sk.card}`;
   const panelHead = `flex items-center justify-between px-5 h-9 border-b ${sk.line} ${eyebrow}`;
 
   const features = [
@@ -32,7 +32,6 @@ export default function EnterpriseGate({ isSignedIn, planId }: { isSignedIn: boo
         <div className={`pointer-events-none absolute inset-0 ${sk.grid} [mask-image:radial-gradient(ellipse_at_50%_0%,black,transparent_70%)]`} />
         <div className="relative max-w-4xl mx-auto px-4 sm:px-6 pt-16">
           <div className={`${panel}`}>
-            <Corners isDark={isDark} />
             <div className={panelHead}>
               <span>b2b.enterprise // restricted</span>
               <LiveDot label={t('Modul blocat', 'Module locked')} active={false} className={sk.dim} />
@@ -55,7 +54,7 @@ export default function EnterpriseGate({ isSignedIn, planId }: { isSignedIn: boo
               </div>
 
               {/* Telemetry */}
-              <dl className={`grid grid-cols-1 sm:grid-cols-3 gap-px border rounded-sm overflow-hidden ${sk.line} ${sk.gap}`}>
+              <dl className={`grid grid-cols-1 sm:grid-cols-3 gap-px border rounded-md overflow-hidden ${sk.line} ${sk.gap}`}>
                 {[
                   { k: t('Sesiune', 'Session'), v: isSignedIn ? t('Autentificat', 'Authenticated') : t('Neautentificat', 'Not signed in') },
                   { k: t('Plan curent', 'Current plan'), v: isSignedIn ? planId : '—' },
@@ -69,7 +68,7 @@ export default function EnterpriseGate({ isSignedIn, planId }: { isSignedIn: boo
               </dl>
 
               {/* Feature breakdown */}
-              <div className={`grid grid-cols-1 sm:grid-cols-2 gap-px border rounded-sm overflow-hidden ${sk.line} ${sk.gap}`}>
+              <div className={`grid grid-cols-1 sm:grid-cols-2 gap-px border rounded-md overflow-hidden ${sk.line} ${sk.gap}`}>
                 {features.map((f) => (
                   <div key={f.en} className={`p-5 flex gap-4 ${sk.cell}`}>
                     <f.icon className={`w-4 h-4 mt-0.5 shrink-0 ${sk.accent}`} />

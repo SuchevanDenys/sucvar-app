@@ -11,8 +11,8 @@ export default function manifest(): MetadataRoute.Manifest {
     scope: '/',
     display: 'standalone', // ecran complet, fără bara browserului
     orientation: 'portrait',
-    background_color: '#09090B', // obsidian (ecranul de pornire iOS/Android)
-    theme_color: '#09090B', // obsidian (bara de stare / titlu)
+    background_color: '#FFFFFF', // alb de galerie (ecranul de pornire iOS/Android)
+    theme_color: '#FFFFFF', // alb de galerie (bara de stare / titlu)
     // PNG-uri reale (logo SUCVAR pe obsidian); 'maskable' permite decupare adaptivă pe Android
     icons: [
       { src: '/icons/icon-192.png', sizes: '192x192', type: 'image/png', purpose: 'any' },

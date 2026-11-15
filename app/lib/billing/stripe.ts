@@ -1,6 +1,7 @@
 // app/lib/billing/stripe.ts — configurare Stripe (DOAR server).
 // Prețurile sunt definite aici, pe server: browserul nu poate alege suma.
 // Ține-le sincronizate cu PRICING_PLANS din app/data/catalog.ts (29 € / 79 € pe lună).
+import 'server-only'; // Build eșuează dacă un component client importă acest modul (izolarea secretelor)
 import Stripe from 'stripe';
 import { annualTotalCents } from '@/app/lib/plan/tiers';
 import type { BillingInterval } from '@/app/types';

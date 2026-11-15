@@ -5,8 +5,10 @@
 // Securitate: utilizatorul (id + email) este luat din token-ul Supabase, NU din body.
 // Altfel oricine ar putea declanșa plăți pe numele altui cont.
 import { NextResponse } from 'next/server';
+import { checkRateLimit, clientIp, getBearerToken, readBodyText, tooManyRequests } from '@/app/lib/server/http';
 import { getAdmin } from '@/app/lib/supabase/admin';
-import { canPurchase, normalizeInterval, resolveEffectiveTier } from '@/app/lib/plan/tiers';
+import { getEffectiveSubscription } from '@/app/lib/server/db';
+import { canPurchase, normalizeInterval } from '@/app/lib/plan/tiers';
 import {
   PAID_PLANS,
   PLAN_CURRENCY,
@@ -16,12 +18,21 @@ import {
   unitAmountFor,
 } from '@/app/lib/billing/stripe';
 
+// Limite de rată: pe IP (înainte de Supabase) și pe utilizator. Fiecare cerere creează o
+// sesiune Stripe, deci plafonăm strict pentru a preveni spam-ul de sesiuni.
+const RATE_IP = { name: 'checkout:ip', limit: 30, windowSeconds: 600 } as const;
+const RATE_USER = { name: 'checkout:user', limit: 8, windowSeconds: 600 } as const;
+const MAX_BODY_BYTES = 2_000;
+
 function fail(status: number, code: string, error: string) {
   return NextResponse.json({ error, code }, { status });
 }
 
 export async function POST(request: Request) {
   try {
+    const ipWait = checkRateLimit(RATE_IP, clientIp(request));
+    if (ipWait !== null) return tooManyRequests(ipWait);
+
     const stripe = getStripe();
     const { client: admin, missing } = getAdmin();
     if (!stripe || !admin) {
@@ -37,8 +48,7 @@ export async function POST(request: Request) {
     }
 
     // 1. Utilizatorul din token-ul Supabase
-    const header = request.headers.get('authorization') ?? '';
-    const token = header.toLowerCase().startsWith('bearer ') ? header.slice(7).trim() : '';
+    const token = getBearerToken(request);
     if (!token) return fail(401, 'AUTH_REQUIRED', 'Autentifică-te pentru a plăti.');
 
     const { data: userData, error: userError } = await admin.auth.getUser(token);
@@ -47,8 +57,18 @@ export async function POST(request: Request) {
     }
     const user = userData.user;
 
-    // 2. Planul cerut (doar 'pro' sau 'agency')
-    const body: unknown = await request.json().catch(() => null);
+    const userWait = checkRateLimit(RATE_USER, user.id);
+    if (userWait !== null) return tooManyRequests(userWait);
+
+    // 2. Planul cerut (doar 'pro' sau 'agency'); corpul legitim are sub 100 de octeți
+    const raw = await readBodyText(request, MAX_BODY_BYTES);
+    if (!raw.ok) return raw.response;
+    let body: unknown = null;
+    try {
+      body = JSON.parse(raw.text);
+    } catch {
+      body = null;
+    }
     const fields =
       typeof body === 'object' && body !== null ? (body as { plan?: unknown; interval?: unknown }) : {};
     if (!isPaidPlan(fields.plan)) {
@@ -62,11 +82,7 @@ export async function POST(request: Request) {
     }
 
     // 3. Nu vindem același plan de două ori; refolosim clientul Stripe existent
-    const { data: profile } = await admin
-      .from('profiles')
-      .select('subscription_tier, stripe_customer_id, current_period_end, billing_interval')
-      .eq('id', user.id)
-      .maybeSingle();
+    const sub = await getEffectiveSubscription(user.id);
     // Planul curent se calculează „efectiv": un abonament expirat (current_period_end < acum)
     // devine 'starter', deci utilizatorul îl poate cumpăra din nou.
     // Gardă (pe server, nu poate fi ocolită din UI) — vezi canPurchase în tiers.ts:
@@ -74,8 +90,8 @@ export async function POST(request: Request) {
     //   același plan + același ciclu sau un plan inferior => 409.
     // Upgrade-ul refolosește `stripe_customer_id`, fără client Stripe duplicat; abonamentul vechi
     // e anulat după plată (applyPaidSession), deci nu se facturează dublu.
-    const currentTier = resolveEffectiveTier(profile?.subscription_tier, profile?.current_period_end);
-    const currentInterval = normalizeInterval(profile?.billing_interval);
+    const currentTier = sub.tier;
+    const currentInterval = sub.interval;
     if (!canPurchase({ tier: currentTier, interval: currentInterval }, { tier: plan, interval })) {
       const same = currentTier === plan;
       return NextResponse.json(
@@ -106,8 +122,8 @@ export async function POST(request: Request) {
     const session = await stripe.checkout.sessions.create({
       mode: 'subscription',
       // `customer` și `customer_email` se exclud reciproc
-      ...(profile?.stripe_customer_id
-        ? { customer: profile.stripe_customer_id as string }
+      ...(sub.stripeCustomerId
+        ? { customer: sub.stripeCustomerId }
         : { customer_email: user.email }),
       client_reference_id: user.id,
       // Price ID din env, dacă e configurat; altfel `price_data` dinamic cu intervalul recurent

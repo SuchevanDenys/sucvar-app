@@ -43,7 +43,10 @@ export const viewport: Viewport = {
   width: "device-width",
   initialScale: 1,
   viewportFit: "cover",
-  themeColor: "#09090B",
+  themeColor: [
+    { media: "(prefers-color-scheme: light)", color: "#FFFFFF" },
+    { media: "(prefers-color-scheme: dark)", color: "#0B0B0C" },
+  ],
 };
 
 export default function RootLayout({
@@ -56,7 +59,7 @@ export default function RootLayout({
       lang="ro"
       className={`${geistSans.variable} ${geistMono.variable} h-full antialiased`}
     >
-      <body className="min-h-full flex flex-col touch-manipulation [-webkit-tap-highlight-color:transparent] selection:bg-[#3B4D43] selection:text-white">
+      <body className="min-h-full flex flex-col touch-manipulation [-webkit-tap-highlight-color:transparent] selection:bg-[#111111] selection:text-white">
         {children}
       </body>
     </html>

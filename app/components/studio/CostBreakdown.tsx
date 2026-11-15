@@ -23,7 +23,7 @@ export default function CostBreakdown({ lang, isDark, cost, styleName }: CostBre
   const eyebrow = `${EYEBROW} ${sk.dim}`;
 
   return (
-    <section className={`border rounded-sm overflow-hidden ${sk.card}`}>
+    <section className={`border rounded-md overflow-hidden ${sk.card}`}>
       <div className={`px-4 h-9 flex items-center justify-between border-b ${sk.line} ${eyebrow}`}>
         <span className="flex items-center gap-2">
           <Wallet className={`w-3.5 h-3.5 ${sk.accent}`} />

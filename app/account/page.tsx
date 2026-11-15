@@ -30,7 +30,7 @@ export default function AccountPage() {
         {!plan.isLoading && !plan.isSignedIn ? (
           <div className={`p-6 rounded-md border text-sm space-y-3 ${ui.card}`}>
             <p>{t('Autentifică-te pentru a vedea abonamentul.', 'Sign in to see your subscription.')}</p>
-            <Link href="/login" className={`inline-flex items-center h-10 px-5 rounded-md text-xs font-semibold uppercase tracking-widest ${ui.btn}`}>
+            <Link href="/login" className={`inline-flex items-center h-10 px-5 rounded-sm text-xs font-semibold uppercase tracking-widest ${ui.btn}`}>
               {t('Autentifică-te', 'Sign in')}
             </Link>
           </div>

@@ -11,246 +11,57 @@ import {
   EngineeringSpecs,
   PlanId,
   RoomDimensions,
+  ScopeLevel,
+  StyleSpec,
   VisualStyle,
 } from '@/app/types';
+import { STYLE_SPECS } from '@/app/data/styleSpecs';
+import { getFocusScenarios, getSpace, type Rates } from '@/app/data/spaces';
 
 // =====================================================================
-// 1. SPACE MODES
+// 1. SPAȚII (interioare / exterioare / grădini)
+//    Datele stau în `spaces.ts`; sunt re-exportate aici ca importurile existente să rămână valabile.
 // =====================================================================
-export interface LayoutOption {
-  id: string;
-  labelRo: string;
-  labelEn: string;
-  prompt: string;
-}
-
-export interface SpaceOption {
-  id: string;
-  labelRo: string;
-  labelEn: string;
-  scenePrompt: string;
-  layouts: LayoutOption[];
-}
-
-export interface ModeConfig {
-  labelRo: string;
-  labelEn: string;
-  spaces: SpaceOption[];
-}
-
-const EXTERIOR_LAYOUTS: LayoutOption[] = [
-  {
-    id: 'ventilated_facade',
-    labelRo: 'Fațadă ventilată cu lemn termotratat și sticlă panoramică',
-    labelEn: 'Ventilated facade with thermo-wood and panoramic glass',
-    prompt:
-      'thermo-treated wood cladding, large floor-to-ceiling black aluminum windows, warm wall sconces',
-  },
-  {
-    id: 'minimal_white',
-    labelRo: 'Tencuială albă + accente de piatră naturală (ardezie)',
-    labelEn: 'White render + natural slate stone accents',
-    prompt: 'white minimalist render, dark slate stone accent wall, architectural driveway lighting',
-  },
-];
-
-export const SPACE_MODES: Record<DesignMode, ModeConfig> = {
-  interiors: {
-    labelRo: 'Interioare',
-    labelEn: 'Interiors',
-    spaces: [
-      {
-        id: 'kitchen',
-        labelRo: 'Bucătărie & Dining',
-        labelEn: 'Kitchen & Dining',
-        scenePrompt:
-          'fully furnished modern kitchen and dining area with fitted cabinetry, kitchen island with bar stools, dining table with chairs, built-in appliances, pendant lights',
-        layouts: [
-          {
-            id: 'l_island',
-            labelRo: 'Bucătărie în L + insulă centrală (triunghi ergonomic)',
-            labelEn: 'L-shape kitchen + central island (work triangle)',
-            prompt: 'L-shaped ergonomic layout, central marble island, sink by the window',
-          },
-          {
-            id: 'u_shape',
-            labelRo: 'Configurație în U pe 3 pereți (depozitare maximă)',
-            labelEn: 'U-shape, 3-wall configuration (max storage)',
-            prompt: 'U-shaped layout on three walls, tall pantry cabinets, LED counter lighting',
-          },
-        ],
-      },
-      {
-        id: 'living room',
-        labelRo: 'Living',
-        labelEn: 'Living Room',
-        scenePrompt:
-          'fully furnished modern living room featuring a large comfortable sofa, two armchairs, coffee table, TV media unit, area rug, floor lamp, curtains',
-        layouts: [
-          {
-            id: 'open_lounge',
-            labelRo: 'Open-space (canapea pe axul TV + zonă dining)',
-            labelEn: 'Open-space (sofa on TV axis + dining area)',
-            prompt: 'open-plan layout, sofa facing the media wall, dining table near the window',
-          },
-          {
-            id: 'sectional_media_wall',
-            labelRo: 'Colțar modular + perete media cu rafturi încorporate',
-            labelEn: 'Sectional sofa + media wall with built-in shelving',
-            prompt: 'L-shaped sectional sofa facing a media wall with built-in shelving',
-          },
-        ],
-      },
-      {
-        id: 'master bedroom',
-        labelRo: 'Dormitor matrimonial',
-        labelEn: 'Master Bedroom',
-        scenePrompt:
-          'fully furnished modern bedroom featuring a luxury upholstered king bed, two nightstands with lamps, integrated ambient lighting, custom wardrobe, bedding and curtains',
-        layouts: [
-          {
-            id: 'bed_symmetric',
-            labelRo: 'Pat central pe peretele tăbliei + noptiere simetrice',
-            labelEn: 'Centered bed on headboard wall + symmetrical nightstands',
-            prompt: 'king bed centered on the headboard wall, symmetrical nightstands, wall sconces',
-          },
-          {
-            id: 'bed_wardrobe_wall',
-            labelRo: 'Perete de dulapuri încorporate + colț de lectură',
-            labelEn: 'Built-in wardrobe wall + reading corner',
-            prompt:
-              'floor-to-ceiling built-in wardrobe wall, king bed, reading armchair by the window',
-          },
-        ],
-      },
-      {
-        id: 'home office',
-        labelRo: 'Birou acasă',
-        labelEn: 'Home Office',
-        scenePrompt:
-          'fully furnished home office featuring a large wooden desk, ergonomic office chair, built-in bookshelves, task lamp, area rug, laptop on the desk',
-        layouts: [
-          {
-            id: 'desk_window',
-            labelRo: 'Birou orientat spre fereastră + biblioteci încorporate',
-            labelEn: 'Desk facing the window + built-in bookshelves',
-            prompt: 'desk placed in front of the window, built-in bookshelves on the side wall',
-          },
-          {
-            id: 'desk_l_shape',
-            labelRo: 'Birou în L pe perete + rafturi până în tavan',
-            labelEn: 'L-shaped wall desk + floor-to-ceiling shelving',
-            prompt: 'L-shaped desk along the wall, floor-to-ceiling shelving, focused task lighting',
-          },
-        ],
-      },
-    ],
-  },
-  exteriors: {
-    labelRo: 'Exterioare & Fațade',
-    labelEn: 'Exteriors & Facades',
-    spaces: [
-      {
-        id: 'modern villa exterior',
-        labelRo: 'Casă / vilă unifamilială',
-        labelEn: 'Single-family villa',
-        scenePrompt:
-          'modern single-family villa exterior with a finished facade, entrance door, landscaped front garden, driveway',
-        layouts: EXTERIOR_LAYOUTS,
-      },
-      {
-        id: 'townhouse facade',
-        labelRo: 'Fațadă duplex / townhouse',
-        labelEn: 'Townhouse facade',
-        scenePrompt:
-          'modern townhouse facade with a finished render, entrance canopy, balcony railings, paved entrance',
-        layouts: EXTERIOR_LAYOUTS,
-      },
-      {
-        id: 'commercial building',
-        labelRo: 'Clădire birouri / showroom',
-        labelEn: 'Commercial facade',
-        scenePrompt:
-          'modern commercial building facade with glazed storefront, entrance canopy, paved plaza, outdoor planters',
-        layouts: EXTERIOR_LAYOUTS,
-      },
-    ],
-  },
-  gardens: {
-    labelRo: 'Grădini & Terase',
-    labelEn: 'Gardens & Patios',
-    spaces: [
-      {
-        id: 'backyard patio',
-        labelRo: 'Terasă cu pergolă & lounge',
-        labelEn: 'Patio & pergola lounge',
-        scenePrompt:
-          'landscaped backyard patio with an outdoor sofa set, dining table with chairs, potted plants, string lights',
-        layouts: [
-          {
-            id: 'pergola_firepit',
-            labelRo: 'Pergolă bioclimatică + zonă BBQ + alei de piatră',
-            labelEn: 'Bioclimatic pergola + outdoor kitchen + stone pathways',
-            prompt:
-              'aluminum bioclimatic pergola, outdoor sofa lounge, built-in barbecue station, stone pathways',
-          },
-        ],
-      },
-      {
-        id: 'poolside garden',
-        labelRo: 'Curte cu piscină & deck',
-        labelEn: 'Poolside & deck garden',
-        scenePrompt:
-          'landscaped poolside garden with a rectangular swimming pool, wooden deck, sun loungers, outdoor planters',
-        layouts: [
-          {
-            id: 'pool_deck',
-            labelRo: 'Piscină dreptunghiulară + deck din lemn + șezlonguri',
-            labelEn: 'Rectangular pool + timber deck + sun loungers',
-            prompt: 'rectangular pool with timber deck, sun loungers, ambient garden lighting',
-          },
-        ],
-      },
-      {
-        id: 'front yard',
-        labelRo: 'Grădină la intrare & alei pavate',
-        labelEn: 'Front yard & pathways',
-        scenePrompt:
-          'landscaped front yard with a paved pathway, green lawn, ornamental shrubs, trees, low garden lights',
-        layouts: [
-          {
-            id: 'paved_pathway',
-            labelRo: 'Alee pavată + graminee ornamentale + iluminat jos',
-            labelEn: 'Paved pathway + ornamental grasses + low lighting',
-            prompt: 'stone paved pathway, ornamental grasses, low landscape lighting',
-          },
-        ],
-      },
-    ],
-  },
-};
-
-export function getSpace(mode: DesignMode, spaceId: string | null | undefined): SpaceOption {
-  const spaces = SPACE_MODES[mode].spaces;
-  return spaces.find((s) => s.id === spaceId) ?? spaces[0];
-}
-
-export function getLayout(space: SpaceOption, layoutId: string | null | undefined): LayoutOption {
-  return space.layouts.find((l) => l.id === layoutId) ?? space.layouts[0];
-}
+export {
+  MAX_FOCUS_CHIPS,
+  SIZE_PRESET_IDS,
+  SPACE_MODES,
+  buildScenarioPrompt,
+  detectSizePreset,
+  getFocusScenarios,
+  getLayout,
+  getSizePreset,
+  getSpace,
+  sanitizeFocusIds,
+} from '@/app/data/spaces';
+export type {
+  FitoutRate,
+  LayoutOption,
+  ModeConfig,
+  Rates,
+  ScenarioOption,
+  SizePreset,
+  SpaceDefaults,
+  SpaceOption,
+} from '@/app/data/spaces';
 
 // =====================================================================
 // 2. VISUAL STYLES
 //    Fiecare stil are: prompt AI, paletă curatată (hex + denumire), materiale
 //    caracteristice și un multiplicator de cost (`costFactor`) aplicat în estimare.
 // =====================================================================
-type StyleInput = Omit<VisualStyle, 'colors'>;
+type StyleInput = Omit<VisualStyle, 'colors' | keyof StyleSpec>;
 
-// Derivă `colors` din paletă, ca să existe o singură sursă de adevăr pentru culori
-const defineStyle = (style: StyleInput): VisualStyle => ({
-  ...style,
-  colors: style.palette.map((swatch) => swatch.hex),
-});
+// Derivă `colors` din paletă și atașează fișa tehnică din `styleSpecs.ts`
+// (brief, materiale, iluminare, raționament de cost, fragment de prompt AI).
+// Lipsa fișei pentru un stil nou este o eroare la încărcare, nu o valoare lipsă în UI.
+const defineStyle = (style: StyleInput): VisualStyle => {
+  const spec = STYLE_SPECS[style.id];
+  if (!spec) {
+    throw new Error(`Lipsește fișa tehnică pentru stilul „${style.id}” în app/data/styleSpecs.ts`);
+  }
+  return { ...style, ...spec, colors: style.palette.map((swatch) => swatch.hex) };
+};
 
 export const VISUAL_STYLES: VisualStyle[] = [
   defineStyle({
@@ -604,20 +415,6 @@ const MAINTENANCE_FACTOR = 0.9;
 const LUMENS_PER_FIXTURE = 800;  // ~9 W LED spot
 const DEFAULT_TARGET_LUX = 200;
 
-// Nivelul de iluminare recomandat (lx) pentru fiecare tip de spațiu
-const TARGET_LUX_BY_SPACE: Record<string, number> = {
-  kitchen: 300,
-  'living room': 200,
-  'master bedroom': 150,
-  'home office': 500,
-  'modern villa exterior': 30,
-  'townhouse facade': 30,
-  'commercial building': 50,
-  'backyard patio': 50,
-  'poolside garden': 50,
-  'front yard': 30,
-};
-
 // Gips-carton tavan suspendat (doar interioare)
 const PLASTERBOARD_SHEET_AREA = 3.0;      // m²/placă (1.2 × 2.5 m)
 const PLASTERBOARD_WASTE = 1.1;
@@ -659,7 +456,8 @@ export function calculateEngineering(
   const baseboardMeters = +(Math.max(0, perimeter - doors * DOOR_WIDTH) * BASEBOARD_WASTE).toFixed(1);
 
   // Iluminat: fluxul total (metoda lumenului), apoi numărul de corpuri (rotunjit în sus)
-  const targetLux = TARGET_LUX_BY_SPACE[spaceType] ?? DEFAULT_TARGET_LUX;
+  // Nivelul de iluminare recomandat (lx) este definit pentru fiecare spațiu în `spaces.ts`
+  const targetLux = getSpace(mode, spaceType).targetLux ?? DEFAULT_TARGET_LUX;
   const requiredLumens = Math.round(
     (targetLux * floorArea) / (UTILIZATION_FACTOR * MAINTENANCE_FACTOR),
   );
@@ -697,8 +495,6 @@ export function calculateEngineering(
 //     cost total = suma liniilor;  cost / m² = total ÷ aria pardoselii
 //     Tarifurile sunt orientative (piața din România, material + montaj, fără TVA).
 // =====================================================================
-type Rates = Record<BudgetTier, number>;
-
 // Tarife unitare pe nivel de buget: [economic, standard, premium]
 const rate = (economy: number, standard: number, luxury: number): Rates => ({ economy, standard, luxury });
 
@@ -714,27 +510,84 @@ const UNIT_RATES = {
   planting: rate(12, 26, 55),    // €/m² spațiu verde (sol, plante, gazon)
 } as const;
 
-// Mobilier și dotări specifice spațiului, în € pe m² de suprafață utilă
-const FITOUT_PER_SQM: Record<string, Rates & { labelRo: string; labelEn: string }> = {
-  kitchen: { ...rate(420, 800, 1600), labelRo: 'Mobilier bucătărie & electrocasnice', labelEn: 'Kitchen cabinetry & appliances' },
-  'living room': { ...rate(150, 300, 650), labelRo: 'Mobilier living', labelEn: 'Living room furniture' },
-  'master bedroom': { ...rate(170, 340, 760), labelRo: 'Mobilier dormitor & dulapuri', labelEn: 'Bedroom furniture & wardrobes' },
-  'home office': { ...rate(130, 260, 560), labelRo: 'Mobilier birou & biblioteci', labelEn: 'Office furniture & bookcases' },
-  'modern villa exterior': { ...rate(55, 110, 240), labelRo: 'Tâmplărie, copertină & intrare', labelEn: 'Joinery, canopy & entrance' },
-  'townhouse facade': { ...rate(45, 90, 200), labelRo: 'Tâmplărie, copertină & balustrade', labelEn: 'Joinery, canopy & railings' },
-  'commercial building': { ...rate(70, 140, 300), labelRo: 'Vitrină, copertină & pavaj', labelEn: 'Storefront, canopy & paving' },
-  'backyard patio': { ...rate(70, 150, 340), labelRo: 'Pergolă, mobilier & zonă BBQ', labelEn: 'Pergola, furniture & BBQ area' },
-  'poolside garden': { ...rate(160, 330, 700), labelRo: 'Piscină, deck & șezlonguri', labelEn: 'Pool, deck & loungers' },
-  'front yard': { ...rate(18, 40, 95), labelRo: 'Alei, borduri & iluminat decorativ', labelEn: 'Pathways, edging & decorative lighting' },
-};
-
-const HARDSCAPE_SHARE = 0.4;  // ponderea suprafeței dalate/deck în grădini (restul = spațiu verde)
 const COST_RANGE = 0.15;      // intervalul de incertitudine ±15%
 
 const round = (n: number): number => Math.round(n);
 const fmtNum = (n: number): string => String(+n.toFixed(2));
 
-// Construiește estimarea de cost în timp real din cotele proiectului, stilul ales și buget.
+// ── Nivelul de intervenție (scope) ──────────────────────────────────────
+// Fiecare nivel scalează, pe categorii de lucrări, liniile devizului:
+//   Refresh & Mobilare  → doar zugrăveli, corpuri de iluminat și mobilier (pardoseala/tavanul rămân);
+//   Renovare Completă   → toate finisajele refăcute (referința, factor 1.00);
+//   La Roșu / Gri       → pornind de la structură: șape, tencuieli, cablaj nou + lucrări pregătitoare.
+// `prompt` (EN) informează modelul AI despre starea inițială / finală a spațiului.
+export interface ScopeFactors {
+  floor: number;      // pardoseală
+  walls: number;      // finisaj pereți
+  ceiling: number;    // tavan suspendat
+  baseboard: number;  // plintă
+  light: number;      // corpuri de iluminat + cablaj
+  envelope: number;   // fațadă / pavaj / spațiu verde (exterioare și grădini)
+  fitout: number;     // mobilier și dotări
+}
+
+export interface ScopeOption {
+  id: ScopeLevel;
+  labelRo: string;
+  labelEn: string;
+  descRo: string;
+  descEn: string;
+  prompt: string;
+  factors: ScopeFactors;
+  /** Lucrări pregătitoare (€/m²), doar la „La Roșu / Gri”: instalații, șapă, terasamente */
+  enabling: Record<DesignMode, { labelRo: string; labelEn: string; rates: Rates } | null>;
+}
+
+export const SCOPES: ScopeOption[] = [
+  {
+    id: 'refresh',
+    labelRo: 'Refresh & Mobilare',
+    labelEn: 'Refresh & Furnish',
+    descRo: 'Zugrăveli, iluminat și mobilier nou; structura și pardoseala rămân.',
+    descEn: 'New paint, lighting and furniture; structure and flooring stay.',
+    prompt: 'existing architecture kept, refreshed finishes, new furniture and decor',
+    factors: { floor: 0.15, walls: 0.6, ceiling: 0, baseboard: 0.3, light: 0.5, envelope: 0.35, fitout: 1 },
+    enabling: { interiors: null, exteriors: null, gardens: null },
+  },
+  {
+    id: 'renovation',
+    labelRo: 'Renovare Completă',
+    labelEn: 'Full Renovation',
+    descRo: 'Toate finisajele refăcute: pardoseală, pereți, tavan, iluminat, mobilier.',
+    descEn: 'All finishes redone: flooring, walls, ceiling, lighting, furniture.',
+    prompt: 'fully renovated space, brand new finishes throughout',
+    factors: { floor: 1, walls: 1, ceiling: 1, baseboard: 1, light: 1, envelope: 1, fitout: 1 },
+    enabling: { interiors: null, exteriors: null, gardens: null },
+  },
+  {
+    id: 'shell',
+    labelRo: 'La Roșu / Gri',
+    labelEn: 'Shell / Raw Build',
+    descRo: 'De la structură: șape, tencuieli, instalații și finisaje complete.',
+    descEn: 'From raw structure: screed, plaster, services and complete finishes.',
+    prompt: 'raw unfinished shell transformed into a complete finished space',
+    factors: { floor: 1.35, walls: 1.7, ceiling: 1.25, baseboard: 1.2, light: 1.6, envelope: 1.5, fitout: 1 },
+    enabling: {
+      interiors: { labelRo: 'Instalații & șapă', labelEn: 'Services & screed', rates: rate(45, 85, 150) },
+      exteriors: { labelRo: 'Pregătire suport & izolații', labelEn: 'Substrate prep & insulation', rates: rate(20, 38, 70) },
+      gardens: { labelRo: 'Terasamente & drenaj', labelEn: 'Groundworks & drainage', rates: rate(15, 28, 55) },
+    },
+  },
+];
+
+export const DEFAULT_SCOPE: ScopeLevel = 'renovation';
+
+// Id-ul necunoscut (date vechi sau corupte) cade pe „Renovare Completă”, referința devizului
+export function getScope(scopeId: unknown): ScopeOption {
+  return SCOPES.find((s) => s.id === scopeId) ?? SCOPES.find((s) => s.id === DEFAULT_SCOPE)!;
+}
+
+// Construiește estimarea de cost în timp real din cotele proiectului, stilul ales, buget și scope.
 export function estimateCost(
   dims: RoomDimensions,
   mode: DesignMode,
@@ -744,11 +597,13 @@ export function estimateCost(
 ): CostEstimate {
   const budget = dims.budget;
   const styleFactor = getStyle(styleId).costFactor;
-  const spaceKey = spaceType in FITOUT_PER_SQM ? spaceType : getSpace(mode, spaceType).id;
-  const fitout = FITOUT_PER_SQM[spaceKey];
+  const space = getSpace(mode, spaceType);
+  const fitout = space.fitout;
+  const scope = getScope(dims.scope);
+  const f = scope.factors;
   const lines: CostLine[] = [];
 
-  // Adaugă o linie: cantitate × tarif (× factorul stilului, dacă se aplică)
+  // Adaugă o linie: cantitate × tarif (× factorul stilului × factorul de scope, dacă se aplică)
   const addLine = (
     id: string,
     labelRo: string,
@@ -757,37 +612,53 @@ export function estimateCost(
     unit: string,
     unitRate: number,
     withStyle: boolean,
+    scopeFactor = 1,
   ) => {
-    if (quantity <= 0) return;
-    const factor = withStyle ? styleFactor : 1;
-    const factorTxt = factor !== 1 ? ` × ${factor.toFixed(2)}` : '';
-    const formula = `${fmtNum(quantity)} ${unit} × ${fmtNum(unitRate)} €/${unit}${factorTxt}`;
+    if (quantity <= 0 || scopeFactor <= 0) return;
+    const style = withStyle ? styleFactor : 1;
+    const styleTxt = style !== 1 ? ` × ${style.toFixed(2)}` : '';
+    const scopeTxt = scopeFactor !== 1 ? ` × ${scopeFactor.toFixed(2)}` : '';
+    const formula = `${fmtNum(quantity)} ${unit} × ${fmtNum(unitRate)} €/${unit}${styleTxt}${scopeTxt}`;
+    const tagRo = [style !== 1 ? 'stil' : '', scopeFactor !== 1 ? 'scop' : ''].filter(Boolean).join(' + ');
+    const tagEn = [style !== 1 ? 'style' : '', scopeFactor !== 1 ? 'scope' : ''].filter(Boolean).join(' + ');
     lines.push({
       id,
       labelRo,
       labelEn,
-      formulaRo: formula + (factor !== 1 ? ' (stil)' : ''),
-      formulaEn: formula + (factor !== 1 ? ' (style)' : ''),
-      total: round(quantity * unitRate * factor),
+      formulaRo: formula + (tagRo ? ` (${tagRo})` : ''),
+      formulaEn: formula + (tagEn ? ` (${tagEn})` : ''),
+      total: round(quantity * unitRate * style * scopeFactor),
     });
   };
 
   if (eng.floorArea > 0) {
     if (mode === 'interiors') {
-      addLine('c-floor', 'Pardoseală', 'Flooring', eng.flooringWithWaste, 'm²', UNIT_RATES.flooring[budget], true);
-      addLine('c-walls', 'Finisaj pereți', 'Wall finish', eng.netWallArea, 'm²', UNIT_RATES.walls[budget], true);
-      addLine('c-ceiling', 'Tavan suspendat', 'Suspended ceiling', eng.floorArea, 'm²', UNIT_RATES.ceiling[budget], false);
-      addLine('c-base', 'Plintă', 'Baseboard', eng.baseboardMeters, 'ml', UNIT_RATES.baseboard[budget], false);
-      addLine('c-light', 'Iluminat LED', 'LED lighting', eng.lightFixtures, 'buc', UNIT_RATES.lightInterior[budget], true);
+      // Baia / bucătăria au finisaje mai scumpe (gresie, faianță, hidroizolație): `finishFactor`
+      addLine('c-floor', 'Pardoseală', 'Flooring', eng.flooringWithWaste, 'm²', UNIT_RATES.flooring[budget] * space.finishFactor, true, f.floor);
+      addLine('c-walls', 'Finisaj pereți', 'Wall finish', eng.netWallArea, 'm²', UNIT_RATES.walls[budget] * space.finishFactor, true, f.walls);
+      addLine('c-ceiling', 'Tavan suspendat', 'Suspended ceiling', eng.floorArea, 'm²', UNIT_RATES.ceiling[budget], false, f.ceiling);
+      addLine('c-base', 'Plintă', 'Baseboard', eng.baseboardMeters, 'ml', UNIT_RATES.baseboard[budget], false, f.baseboard);
+      addLine('c-light', 'Iluminat LED', 'LED lighting', eng.lightFixtures, 'buc', UNIT_RATES.lightInterior[budget], true, f.light);
     } else if (mode === 'exteriors') {
-      addLine('c-facade', 'Fațadă (termosistem + finisaj)', 'Facade (ETICS + finish)', eng.netWallArea, 'm²', UNIT_RATES.facade[budget], true);
-      addLine('c-light', 'Iluminat exterior IP65', 'Exterior lighting IP65', eng.lightFixtures, 'buc', UNIT_RATES.lightOutdoor[budget], true);
+      if (space.costBasis === 'facade') {
+        addLine('c-facade', 'Fațadă (termosistem + finisaj)', 'Facade (ETICS + finish)', eng.netWallArea, 'm²', UNIT_RATES.facade[budget], true, f.envelope);
+      } else {
+        // Terasă, balcon, piscină: se plătește suprafața orizontală (deck / dale), nu pereții
+        addLine('c-hard', 'Pavaj / deck', 'Paving / decking', eng.flooringWithWaste, 'm²', UNIT_RATES.hardscape[budget], true, f.envelope);
+      }
+      addLine('c-light', 'Iluminat exterior IP65', 'Exterior lighting IP65', eng.lightFixtures, 'buc', UNIT_RATES.lightOutdoor[budget], true, f.light);
     } else {
-      addLine('c-hard', 'Pavaj / deck', 'Paving / decking', eng.flooringWithWaste * HARDSCAPE_SHARE, 'm²', UNIT_RATES.hardscape[budget], true);
-      addLine('c-green', 'Spațiu verde', 'Planting', eng.floorArea * (1 - HARDSCAPE_SHARE), 'm²', UNIT_RATES.planting[budget], false);
-      addLine('c-light', 'Iluminat grădină', 'Garden lighting', eng.lightFixtures, 'buc', UNIT_RATES.lightOutdoor[budget], true);
+      addLine('c-hard', 'Pavaj / deck', 'Paving / decking', eng.flooringWithWaste * space.hardscapeShare, 'm²', UNIT_RATES.hardscape[budget], true, f.envelope);
+      addLine('c-green', 'Spațiu verde', 'Planting', eng.floorArea * (1 - space.hardscapeShare), 'm²', UNIT_RATES.planting[budget], false, f.envelope);
+      addLine('c-light', 'Iluminat grădină', 'Garden lighting', eng.lightFixtures, 'buc', UNIT_RATES.lightOutdoor[budget], true, f.light);
     }
-    addLine('c-fitout', fitout.labelRo, fitout.labelEn, eng.floorArea, 'm²', fitout[budget], true);
+    addLine('c-fitout', fitout.labelRo, fitout.labelEn, eng.floorArea, 'm²', fitout[budget], true, f.fitout);
+
+    // Doar la „La Roșu / Gri”: lucrările pregătitoare apar ca linie separată în deviz
+    const enabling = scope.enabling[mode];
+    if (enabling) {
+      addLine('c-enabling', enabling.labelRo, enabling.labelEn, eng.floorArea, 'm²', enabling.rates[budget], false);
+    }
   }
 
   const total = lines.reduce((sum, line) => sum + line.total, 0);
@@ -830,7 +701,55 @@ export interface SpecItem {
   included: boolean;            // poate fi debifat de utilizator
 }
 
+// Constructor compact pentru articolele de specificație ale spațiilor noi
+const spec = (
+  id: string,
+  categoryRo: string,
+  categoryEn: string,
+  nameRo: string,
+  nameEn: string,
+  technicalSpecRo: string,
+  technicalSpecEn: string,
+  searchKeywordsRo: string,
+  searchKeywordsEn: string,
+  quantity: string,
+): SpecItem => ({
+  id, categoryRo, categoryEn, nameRo, nameEn, technicalSpecRo, technicalSpecEn,
+  searchKeywordsRo, searchKeywordsEn, quantity, included: true,
+});
+
+// Articol suplimentar: materialele și echipamentele scenariilor bifate (chips) în Studio
+function scenarioSpecItem(spaceId: string, mode: DesignMode, dims: RoomDimensions): SpecItem | null {
+  const picked = getFocusScenarios(getSpace(mode, spaceId), dims.focusIds);
+  if (picked.length === 0) return null;
+  return spec(
+    'scenario-materials',
+    'Scenarii alese',
+    'Selected scenarios',
+    'Materiale și echipamente pentru scenariile alese',
+    'Materials and equipment for the selected scenarios',
+    picked.map((s) => `${s.labelRo}: ${s.materialRo}.`).join(' '),
+    picked.map((s) => `${s.labelEn}: ${s.materialEn}.`).join(' '),
+    picked.map((s) => s.materialRo.split(',')[0]).join(' '),
+    picked.map((s) => s.materialEn.split(',')[0]).join(' '),
+    `${picked.length} ${picked.length === 1 ? 'scenariu' : 'scenarii'}`,
+  );
+}
+
 export function generateSpecItems(
+  mode: DesignMode,
+  spaceType: string,
+  dims: RoomDimensions,
+  eng: EngineeringSpecs,
+): SpecItem[] {
+  const space = getSpace(mode, spaceType);
+  const base = baseSpecItems(mode, space.id, dims, eng);
+  const extra = scenarioSpecItem(space.id, mode, dims);
+  return extra ? [...base, extra] : base;
+}
+
+// Specificații pe tip de spațiu: structura de bază (suprafețe, iluminat) + mobilier specific
+function baseSpecItems(
   mode: DesignMode,
   spaceType: string,
   dims: RoomDimensions,
@@ -838,7 +757,12 @@ export function generateSpecItems(
 ): SpecItem[] {
   const q = getQualityLabel(dims.budget);
 
-  // ── Exterioare ──────────────────────────────────────────────────────
+  // ── Exterioare: terasă / balcon / piscină (suprafețe orizontale) ──────
+  if (mode === 'exteriors' && getSpace(mode, spaceType).costBasis === 'surface') {
+    return outdoorSurfaceSpecs(spaceType, eng);
+  }
+
+  // ── Exterioare: fațadă ───────────────────────────────────────────────
   if (mode === 'exteriors') {
     return [
       {
@@ -876,38 +800,7 @@ export function generateSpecItems(
 
   // ── Grădini ──────────────────────────────────────────────────────────
   if (mode === 'gardens') {
-    return [
-      {
-        id: 'gar-deck',
-        categoryRo: 'Terasă & Deck',
-        categoryEn: 'Patio & Deck',
-        nameRo: 'Pardoseală exterioară WPC + pergolă bioclimatică aluminiu',
-        nameEn: 'WPC composite decking + aluminum bioclimatic pergola',
-        technicalSpecRo:
-          'Pardoseală WPC (lemn-plastic) antiderapantă, profil plin 140×25 mm, rezistentă la UV și umiditate, culoare teak; pergolă aluminiu 6060 T5, lamele orientabile 0–135°, vopsit electrostatic RAL 7016.',
-        technicalSpecEn:
-          'WPC anti-slip decking, solid 140×25 mm profile, UV and moisture resistant, teak color; aluminium pergola 6060 T5, 0–135° adjustable louvres, electrostatic coating RAL 7016.',
-        searchKeywordsRo: 'pardoseala wpc exterior 140x25mm antiderapanta teak',
-        searchKeywordsEn: 'wpc composite decking 140x25mm anti-slip outdoor',
-        quantity: `${eng.flooringWithWaste} m²`,
-        included: true,
-      },
-      {
-        id: 'gar-furniture',
-        categoryRo: 'Mobilier grădină',
-        categoryEn: 'Garden furniture',
-        nameRo: 'Set mobilier lounge exterior impermeabil',
-        nameEn: 'Weatherproof outdoor lounge set',
-        technicalSpecRo:
-          'Structură din aluminiu 5052 H32 sau ratan sintetic PE, tapițerie textilă Olefin rezistentă la apă (300 g/m²), spumă poliuretanică densitate 28 kg/m³. Cerere: 4–6 locuri.',
-        technicalSpecEn:
-          'Frame in 5052 H32 aluminium or PE synthetic rattan, Olefin waterproof textile (300 g/m²), PU foam 28 kg/m³. Required: 4–6 seats.',
-        searchKeywordsRo: 'mobilier exterior aluminiu ratan sintetic olefin impermeabil',
-        searchKeywordsEn: 'outdoor aluminium rattan lounge set olefin fabric weatherproof',
-        quantity: '1 set 4–6 locuri',
-        included: true,
-      },
-    ];
+    return gardenSpecs(spaceType, eng);
   }
 
   // ── Interioare ────────────────────────────────────────────────────────
@@ -989,6 +882,23 @@ export function generateSpecItems(
       included: true,
     },
   ];
+
+  // Baia: gresie porțelanată antiderapantă în loc de parchet (zonă umedă)
+  if (spaceType === 'bathroom') {
+    const floorIdx = items.findIndex((i) => i.id === 'mat-floor');
+    items[floorIdx] = spec(
+      'mat-floor',
+      'Finisaje pardoseală',
+      'Flooring finishes',
+      'Gresie porțelanată rectificată antiderapantă',
+      'Rectified anti-slip porcelain tiles',
+      `Gresie porțelanată 120×60 cm, grosime 9 mm, rectificată, absorbție apă <0.5%, clasa de alunecare R10 (R11 în zona de duș), rost 2 mm; hidroizolație lichidă sub șapă. ${qualityNote}.`,
+      `Porcelain tiles 120×60 cm, 9 mm, rectified, water absorption <0.5%, slip class R10 (R11 in shower), 2 mm joint; liquid waterproofing under screed. ${qualityNoteEn}.`,
+      'gresie portelanata 120x60 rectificata R10 antiderapanta hidroizolatie lichida',
+      'porcelain tile 120x60 rectified R10 anti-slip liquid waterproofing',
+      `${eng.flooringWithWaste} m² (+10% pierderi incluse)`,
+    );
+  }
 
   // Mobilier specific spațiului
   items.push(...getInteriorFurnitureSpec(spaceType, dims, eng));
@@ -1107,6 +1017,95 @@ function getInteriorFurnitureSpec(
     ];
   }
 
+  if (spaceType === 'bathroom') {
+    return [
+      spec('bath-sanitary', 'Obiecte sanitare', 'Sanitaryware',
+        'Pachet sanitar: vas WC suspendat, duș walk-in, vanity cu lavoar',
+        'Sanitary pack: wall-hung WC, walk-in shower, vanity with basin',
+        'Vas WC suspendat rimless cu rezervor încastrat 3/6 L; ecran duș sticlă securizată 8 mm cu tratament anticalcar; rigolă liniară inox 70 cm; vanity suspendat 80–120 cm cu blat ceramic/cuarț; baterii cromate sau negru mat, clasa de zgomot I.',
+        'Rimless wall-hung WC with concealed 3/6 L cistern; 8 mm tempered glass shower screen with anti-limescale coating; 70 cm stainless linear drain; 80–120 cm floating vanity with ceramic/quartz top; chrome or matte black taps, noise class I.',
+        'vas wc suspendat rimless rezervor incastrat dus walk-in 8mm rigola liniara vanity suspendat',
+        'wall-hung rimless wc concealed cistern walk-in shower 8mm linear drain floating vanity',
+        '1 set (WC + duș + vanity)'),
+      spec('bath-vent', 'Instalații', 'Services',
+        'Radiator port-prosop & ventilație mecanică',
+        'Towel radiator & mechanical ventilation',
+        'Radiator port-prosop electric/hidraulic 500×1200 mm, protecție IP44; ventilator axial silențios, debit ≥90 m³/h, senzor de umiditate, grad de protecție IPX4.',
+        'Electric/hydronic towel radiator 500×1200 mm, IP44; silent axial fan ≥90 m³/h with humidity sensor, IPX4.',
+        'radiator port prosop 500x1200 IP44 ventilator baie 90m3h senzor umiditate',
+        'towel radiator 500x1200 IP44 bathroom fan 90m3h humidity sensor',
+        '1 radiator + 1 ventilator'),
+    ];
+  }
+
+  if (spaceType === 'entryway') {
+    return [
+      spec('hall-cabinet', 'Mobilier hol', 'Hall furniture',
+        'Dulap încastrat cu bancă de încălțat și oglindă',
+        'Built-in cabinet with shoe bench and mirror',
+        'Corp PAL melaminat 18 mm, uși batante sau glisante, înălțime 240 cm; bancă tapițată cu sertar pentru pantofi (adâncime 35 cm); oglindă 6 mm full-height; bară de haine și rafturi reglabile.',
+        '18 mm melamine PAL carcass, hinged or sliding doors, 240 cm high; upholstered bench with shoe drawer (35 cm deep); full-height 6 mm mirror; hanging rail and adjustable shelves.',
+        'dulap hol PAL 18mm bancă pantofi sertar oglinda 240cm',
+        'hallway wardrobe 18mm PAL shoe bench drawer mirror 240cm',
+        `L=${Math.min(3.5, dims.length * 0.6).toFixed(1)} m × H=240 cm`),
+    ];
+  }
+
+  if (spaceType === 'attic loft') {
+    return [
+      spec('attic-roofwin', 'Tâmplărie', 'Joinery',
+        'Ferestre de mansardă cu rulou exterior',
+        'Roof windows with external blind',
+        'Ferestre de acoperiș 78×140 cm, sticlă tripan Low-E (Uw ≤1.0 W/m²K), deschidere pivotantă, protecție solară prin rulou exterior; izolare cu manșetă de etanșare.',
+        'Roof windows 78×140 cm, Low-E triple glazing (Uw ≤1.0 W/m²K), pivot opening, external solar-shading blind; sealed with flashing collar.',
+        'fereastra mansarda 78x140 triplu low-e rulou exterior',
+        'roof window 78x140 triple glazed low-e external blind',
+        `${Math.max(1, dims.windowsCount)} buc.`),
+      spec('attic-eave', 'Depozitare', 'Storage',
+        'Dulapuri la înclinație sub streașină',
+        'Custom sloped-wall storage units',
+        'Corpuri pe comandă din PAL 18 mm cu laterale înclinate, sertare full-extension, uși push-to-open, înălțime variabilă 60–140 cm.',
+        'Custom 18 mm PAL units with angled sides, full-extension drawers, push-to-open doors, variable height 60–140 cm.',
+        'dulap mansarda pe comanda inclinat sertare push to open',
+        'custom attic eave storage sloped cabinets push to open',
+        `L=${(dims.length * 0.5).toFixed(1)} m`),
+    ];
+  }
+
+  if (spaceType === 'walk-in closet') {
+    return [
+      spec('clo-system', 'Sistem dressing', 'Closet system',
+        'Sistem dressing pe comandă cu insulă de sertare',
+        'Custom closet system with drawer island',
+        'Corp PAL/MDF 18 mm, rafturi reglabile pas 32 mm, bare de haine cu motor de coborâre, sertare soft-close cu separatoare, blat sticlă 8 mm pe insulă, profil LED 3000 K cu senzor PIR.',
+        '18 mm PAL/MDF carcass, adjustable shelves at 32 mm pitch, pull-down hanging rails, soft-close drawers with dividers, 8 mm glass island top, 3000 K LED profile with PIR sensor.',
+        'dressing pe comanda PAL 18mm sertare soft-close insula blat sticla led senzor',
+        'custom walk-in closet 18mm PAL soft-close drawers island glass top LED sensor',
+        `L=${(dims.width + dims.length).toFixed(1)} m perete × H=240 cm`),
+    ];
+  }
+
+  if (spaceType === 'commercial cafe') {
+    return [
+      spec('caf-counter', 'Echipamente HoReCa', 'HoReCa equipment',
+        'Tejghea de servire cu vitrină frigorifică și espressor',
+        'Service counter with chilled display and espresso machine',
+        'Tejghea din solid-surface 30 mm, vitrină frigorifică ventilată 1.5 m (+2…+8 °C), espressor profesional 2 grupuri (7–9 kW), mașină de gheață, chiuvetă inox cu doua cuve conform HACCP.',
+        '30 mm solid-surface counter, 1.5 m ventilated chilled display (+2…+8 °C), 2-group pro espresso machine (7–9 kW), ice maker, double-bowl stainless sink (HACCP).',
+        'tejghea cafenea vitrina frigorifica 1.5m espressor 2 grupuri horeca haccp',
+        'cafe service counter chilled display 1.5m 2-group espresso machine horeca haccp',
+        `L=${(dims.width * 0.6).toFixed(1)} m`),
+      spec('caf-seating', 'Mobilier HoReCa', 'HoReCa furniture',
+        'Mese și scaune pentru uz comercial intensiv',
+        'Commercial-grade tables and chairs',
+        'Mese Ø70/70×70 cm cu blat HPL 12 mm, bază fontă, scaune stivuibile cu tapițerie ignifugă M1, bănci tapițate pe perete; ~1 loc / 1.5 m² de sală.',
+        'Ø70/70×70 cm tables with 12 mm HPL top, cast-iron base, stackable chairs with M1 fire-rated upholstery, wall banquettes; ~1 seat per 1.5 m² of floor.',
+        'mese cafenea HPL 70x70 scaune stivuibile ignifuge M1 banchete',
+        'cafe tables HPL 70x70 stackable chairs M1 fire rated banquettes',
+        `~${Math.max(4, Math.round(eng.floorArea / 1.5))} locuri`),
+    ];
+  }
+
   // Living room (fallback pentru orice spațiu interior necunoscut)
   return [
     {
@@ -1139,5 +1138,133 @@ function getInteriorFurnitureSpec(
       quantity: '1 set (2 buc.)',
       included: true,
     },
+  ];
+}
+
+// ── Exterioare orizontale (terasă, balcon, piscină) ────────────────────
+function deckItem(eng: EngineeringSpecs, withPergola: boolean): SpecItem {
+  return spec(
+    'gar-deck',
+    'Terasă & Deck',
+    'Patio & Deck',
+    withPergola ? 'Pardoseală exterioară WPC + pergolă bioclimatică aluminiu' : 'Pardoseală exterioară WPC antiderapantă',
+    withPergola ? 'WPC composite decking + aluminum bioclimatic pergola' : 'Anti-slip WPC composite decking',
+    'Pardoseală WPC (lemn-plastic) antiderapantă, profil plin 140×25 mm, rezistentă la UV și umiditate, culoare teak, pe subconstrucție ventilată din aluminiu' +
+      (withPergola ? '; pergolă aluminiu 6060 T5, lamele orientabile 0–135°, vopsit electrostatic RAL 7016.' : '.'),
+    'WPC anti-slip decking, solid 140×25 mm profile, UV and moisture resistant, teak colour, on a ventilated aluminium substructure' +
+      (withPergola ? '; aluminium pergola 6060 T5, 0–135° adjustable louvres, electrostatic coating RAL 7016.' : '.'),
+    'pardoseala wpc exterior 140x25mm antiderapanta teak',
+    'wpc composite decking 140x25mm anti-slip outdoor',
+    `${eng.flooringWithWaste} m²`,
+  );
+}
+
+const loungeItem = (seats: string): SpecItem =>
+  spec(
+    'gar-furniture',
+    'Mobilier grădină',
+    'Garden furniture',
+    'Set mobilier lounge exterior impermeabil',
+    'Weatherproof outdoor lounge set',
+    'Structură din aluminiu 5052 H32 sau ratan sintetic PE, tapițerie textilă Olefin rezistentă la apă (300 g/m²), spumă poliuretanică densitate 28 kg/m³.',
+    'Frame in 5052 H32 aluminium or PE synthetic rattan, Olefin waterproof textile (300 g/m²), PU foam 28 kg/m³.',
+    'mobilier exterior aluminiu ratan sintetic olefin impermeabil',
+    'outdoor aluminium rattan lounge set olefin fabric weatherproof',
+    seats,
+  );
+
+function outdoorSurfaceSpecs(spaceId: string, eng: EngineeringSpecs): SpecItem[] {
+  if (spaceId === 'balcony') {
+    return [
+      deckItem(eng, false),
+      spec('bal-planters', 'Plante & balustradă', 'Planting & railing',
+        'Jardiniere aluminiu cu irigare și mobilier pliabil',
+        'Aluminium planters with irrigation and folding furniture',
+        'Jardiniere aluminiu 1.2 mm cu rezervor de apă, fixare pe balustradă cu consolă anti-răsturnare; set bistro pliabil (masă Ø60, 2 scaune), sarcină balustradă ≥1 kN/m.',
+        '1.2 mm aluminium planters with water reservoir, tip-proof railing brackets; folding bistro set (Ø60 table, 2 chairs), railing load ≥1 kN/m.',
+        'jardiniera aluminiu rezervor apa balustrada set bistro pliabil',
+        'aluminium railing planter water reservoir folding bistro set',
+        '1 set'),
+    ];
+  }
+  if (spaceId === 'poolside deck') {
+    return [
+      spec('pool-shell', 'Piscină', 'Swimming pool',
+        'Bazin din beton armat hidroizolat cu skimmer și filtrare',
+        'Waterproofed RC pool shell with skimmer and filtration',
+        'Beton armat C30/37 hidrofug, hidroizolație cristalizantă + membrană PVC armată 1.5 mm, grup de filtrare cu nisip (debit ≥12 m³/h), skimmer ascuns, 3 proiectoare LED RGB IP68.',
+        'C30/37 water-resistant RC, crystalline waterproofing + 1.5 mm reinforced PVC liner, sand filtration (≥12 m³/h), hidden skimmer, 3 IP68 RGB LED lights.',
+        'piscina beton armat membrana pvc 1.5mm filtru nisip 12mc skimmer led rgb ip68',
+        'concrete pool pvc liner 1.5mm sand filter 12m3h skimmer led rgb ip68',
+        `~${(eng.floorArea * 0.35).toFixed(0)} m² luciu de apă`),
+      deckItem(eng, false),
+      loungeItem('4 șezlonguri + parasol'),
+    ];
+  }
+  // Terasă & pergolă (și orice altă suprafață exterioară)
+  return [deckItem(eng, true), loungeItem('1 set 4–6 locuri')];
+}
+
+// ── Grădini ────────────────────────────────────────────────────────────
+function gardenSpecs(spaceId: string, eng: EngineeringSpecs): SpecItem[] {
+  if (spaceId === 'outdoor pavilion') {
+    return [
+      spec('pav-kitchen', 'Bucătărie de vară', 'Summer kitchen',
+        'Modul bucătărie exterior cu grătar inox și blat granit',
+        'Outdoor kitchen module with stainless grill and granite top',
+        'Corpuri inox 304 rezistente la intemperii, blat granit 30 mm, grătar gaz 3 arzătoare (≥10 kW), chiuvetă și frigider exterior IPX4, hotă/coș inox dublu perete pentru cuptorul pe lemne.',
+        'Weather-rated 304 stainless cabinets, 30 mm granite top, 3-burner gas grill (≥10 kW), sink and IPX4 outdoor fridge, double-wall stainless flue for the wood-fired oven.',
+        'bucatarie exterior inox 304 blat granit gratar gaz 3 arzatoare frigider exterior',
+        'outdoor kitchen 304 stainless granite top 3 burner gas grill outdoor fridge',
+        `L=${Math.min(4.5, eng.floorArea ? Math.sqrt(eng.floorArea) * 1.2 : 3).toFixed(1)} m`),
+      spec('pav-structure', 'Structură', 'Structure',
+        'Structură foișor din lemn lamelat cu acoperiș',
+        'Glulam pavilion structure with roof',
+        'Stâlpi și grinzi din lemn lamelat GL24h, secțiune min. 12×16 cm, tratament autoclavizat clasa de utilizare 3, ancore inox pe fundații izolate; acoperiș cu hidroizolație membrană și strat sedum sau tablă fălțuită.',
+        'GL24h glulam posts and beams, min. 12×16 cm, use-class-3 treatment, stainless anchors on pad foundations; membrane waterproofing with sedum layer or standing-seam metal.',
+        'foisor lemn lamelat GL24h 12x16 autoclavizat acoperis sedum',
+        'garden pavilion glulam GL24h 12x16 use class 3 sedum roof',
+        `${eng.floorArea} m² acoperit`),
+      loungeItem('masă 8–10 persoane'),
+    ];
+  }
+  if (spaceId === 'courtyard walkway') {
+    return [
+      spec('crt-paving', 'Pavaj', 'Paving',
+        'Plăci din piatră naturală pe strat drenant',
+        'Natural stone slabs on a drainage bed',
+        'Plăci granit/calcar 60×40×3 cm cu suprafață antiderapantă (R11), așezate pe strat de piatră spartă 0–32 mm (20 cm) și nisip de pozare 4 cm; rosturi înierbate sau umplute cu nisip polimeric.',
+        '60×40×3 cm granite/limestone slabs with anti-slip finish (R11) on 20 cm crushed-stone sub-base and 4 cm bedding sand; grass or polymeric-sand joints.',
+        'placi granit 60x40x3 antiderapant R11 strat drenant piatra sparta nisip polimeric',
+        'granite paving 60x40x3 R11 anti-slip crushed stone base polymeric sand',
+        `${(eng.flooringWithWaste * 0.7).toFixed(1)} m²`),
+      spec('crt-drain', 'Drenaj', 'Drainage',
+        'Rigole liniare și geotextil de separare',
+        'Linear drains and separation geotextile',
+        'Rigolă liniară inox 100 mm cu grătar clasa A15, pantă min. 1.5% spre rigolă; geotextil nețesut 200 g/m² sub stratul de fundare.',
+        '100 mm stainless linear drain with A15 grating, min. 1.5% fall to the drain; 200 g/m² non-woven geotextile under the sub-base.',
+        'rigola liniara inox 100mm A15 geotextil 200g panta 1.5%',
+        'stainless linear drain 100mm A15 geotextile 200g 1.5% fall',
+        `${Math.ceil(Math.sqrt(eng.floorArea) * 1.5)} ml`),
+    ];
+  }
+  // Grădină rezidențială
+  return [
+    spec('rg-plant', 'Plantații', 'Planting',
+      'Pachet plantații: arbori, arbuști, graminee și gazon în rulou',
+      'Planting pack: trees, shrubs, grasses and turf rolls',
+      'Arbori ornamentali circumferință 8–10 cm în container, arbuști C5–C10, graminee și perene C2; sol vegetal 20 cm, mulci scoarță pin 7 cm; gazon în rulou 35×150 cm pe strat de nisip.',
+      'Ornamental trees 8–10 cm girth in containers, C5–C10 shrubs, C2 grasses and perennials; 20 cm topsoil, 7 cm pine-bark mulch; turf rolls 35×150 cm on sand base.',
+      'arbori ornamentali 8-10 arbusti C5 graminee perene gazon rulon mulci scoarta',
+      'ornamental trees 8-10 girth shrubs C5 grasses perennials turf rolls bark mulch',
+      `${(eng.floorArea * 0.7).toFixed(0)} m² spațiu verde`),
+    spec('rg-irrig', 'Irigații & iluminat', 'Irrigation & lighting',
+      'Sistem de irigații automat și iluminat peisager 12 V',
+      'Automatic irrigation and 12 V landscape lighting',
+      'Irigare prin picurare + aspersoare rotative pop-up, programator cu senzor de ploaie, conducte PE 25 mm; balize și proiectoare LED 12 V IP65, transformator 150 W cu fotocelulă.',
+      'Drip lines + pop-up rotary sprinklers, rain-sensor controller, 25 mm PE pipe; 12 V IP65 LED bollards and spots, 150 W transformer with photocell.',
+      'irigatii automate picurare pop-up programator senzor ploaie led 12v ip65',
+      'automatic irrigation drip pop-up rain sensor controller 12v ip65 led landscape lights',
+      `${eng.lightFixtures} corpuri de iluminat`),
   ];
 }

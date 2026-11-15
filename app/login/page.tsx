@@ -72,7 +72,7 @@ export default function LoginAndAccountPage() {
 
   const isSupabaseConfigured = supabase !== null;
   const eyebrowClass = `text-[11px] uppercase tracking-[0.28em] ${ui.muted}`;
-  const fieldClass = `w-full h-11 px-3 rounded-md border bg-transparent text-base outline-none transition-colors ${ui.input}`;
+  const fieldClass = `w-full h-11 px-3 rounded-sm border bg-transparent text-base outline-none transition-colors ${ui.input}`;
 
   const getTabClass = (tabName: AuthTab): string => {
     const baseClass =
@@ -509,7 +509,7 @@ export default function LoginAndAccountPage() {
               <button
                 type="submit"
                 disabled={isSubmitting}
-                className={`w-full h-12 rounded-md text-xs font-semibold uppercase tracking-widest transition-colors disabled:opacity-50 cursor-pointer touch-manipulation ${ui.btn}`}
+                className={`w-full h-12 rounded-sm text-xs font-semibold uppercase tracking-widest transition-colors disabled:opacity-50 cursor-pointer touch-manipulation ${ui.btn}`}
               >
                 {isSubmitting
                   ? t('Se procesează...', 'Processing...')
@@ -522,7 +522,7 @@ export default function LoginAndAccountPage() {
           <div className="grid grid-cols-1 lg:grid-cols-12 gap-8 items-start">
             {/* COLOANA STÂNGĂ: Google OAuth + Email/Parolă */}
             <div className={`lg:col-span-7 p-8 rounded-md border space-y-6 ${ui.card}`}>
-              <div className="flex items-center justify-between border-b pb-4 border-stone-300/40">
+              <div className="flex items-center justify-between border-b pb-4 border-neutral-300/40">
                 <SucvarLogo size={28} withWordmark isDark={isDark} />
                 <div className="flex gap-1">
                   <button
@@ -549,7 +549,7 @@ export default function LoginAndAccountPage() {
                     type="button"
                     onClick={handleGoogleLogin}
                     disabled={isSubmitting || !isSupabaseConfigured}
-                    className={`w-full h-12 px-4 rounded-md border flex items-center justify-center gap-3 text-xs font-semibold uppercase tracking-widest transition-all disabled:opacity-50 cursor-pointer touch-manipulation ${ui.btnGhost}`}
+                    className={`w-full h-12 px-4 rounded-sm border flex items-center justify-center gap-3 text-xs font-semibold uppercase tracking-widest transition-all disabled:opacity-50 cursor-pointer touch-manipulation ${ui.btnGhost}`}
                   >
                     <GoogleIcon />
                     <span>
@@ -671,7 +671,7 @@ export default function LoginAndAccountPage() {
                     type="button"
                     onClick={handleResendConfirmation}
                     disabled={isSubmitting}
-                    className={`inline-flex items-center gap-2 h-10 px-4 rounded-md border text-xs font-semibold uppercase tracking-widest disabled:opacity-50 cursor-pointer touch-manipulation ${ui.btnGhost}`}
+                    className={`inline-flex items-center gap-2 h-10 px-4 rounded-sm border text-xs font-semibold uppercase tracking-widest disabled:opacity-50 cursor-pointer touch-manipulation ${ui.btnGhost}`}
                   >
                     <MailCheck className="w-4 h-4" />
                     {t('Retrimite emailul de confirmare', 'Resend confirmation email')}
@@ -681,7 +681,7 @@ export default function LoginAndAccountPage() {
                 <button
                   type="submit"
                   disabled={isSubmitting || !isSupabaseConfigured}
-                  className={`w-full h-12 rounded-md text-xs font-semibold uppercase tracking-widest transition-colors disabled:opacity-50 cursor-pointer touch-manipulation ${ui.btn}`}
+                  className={`w-full h-12 rounded-sm text-xs font-semibold uppercase tracking-widest transition-colors disabled:opacity-50 cursor-pointer touch-manipulation ${ui.btn}`}
                 >
                   {isSubmitting ? t('Se procesează...', 'Processing...') : submitLabel}
                 </button>
@@ -722,18 +722,18 @@ export default function LoginAndAccountPage() {
                       key={profile.id}
                       type="button"
                       onClick={() => handleQuickAccess(profile.email, roleLabel, profile.tier)}
-                      className={`w-full p-4 rounded-md border text-left flex items-center justify-between gap-4 transition-all cursor-pointer touch-manipulation ${ui.btnGhost}`}
+                      className={`w-full p-4 rounded-sm border text-left flex items-center justify-between gap-4 transition-all cursor-pointer touch-manipulation ${ui.btnGhost}`}
                     >
                       <div className="flex items-center gap-3.5 min-w-0">
                         <div
-                          className={`w-10 h-10 rounded-md flex items-center justify-center shrink-0 ${ui.soft}`}
+                          className={`w-10 h-10 rounded-sm flex items-center justify-center shrink-0 ${ui.soft}`}
                         >
                           <ProfileIcon className={`w-5 h-5 ${ui.accent}`} />
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
                             <p className="text-sm font-semibold truncate">{roleLabel}</p>
-                            <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-sm bg-[#3B4D43] text-white">
+                            <span className="text-[10px] font-mono uppercase px-2 py-0.5 rounded-full bg-[#111111] text-white dark:bg-white dark:text-[#111111]">
                               {profile.badge}
                             </span>
                           </div>

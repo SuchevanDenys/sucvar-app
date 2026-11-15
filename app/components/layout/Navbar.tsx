@@ -1,4 +1,5 @@
 // app/components/layout/Navbar.tsx
+// v5.0 — monochrome gallery bar: solid white/charcoal, 1px hairline, centered uppercase nav, no blue.
 // v4.3 — plan-aware account menu (STARTER / PRO / AGENCY row + B2B lock state).
 // v4.2 — "Engine 4.0 online" badge removed.
 // v4.1 — Lovable "Dark Architecture" visual pass (logic unchanged from v3.0).
@@ -31,16 +32,7 @@ export default function Navbar() {
   const [email, setEmail] = useState<string | null>(null);
   const [tier, setTier] = useState<PlanTier | null>(null);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [scrolled, setScrolled] = useState(false);
   const menuRef = useRef<HTMLDivElement>(null);
-
-  // Header hairline fades in after the first few px of scroll (Lovable behaviour)
-  useEffect(() => {
-    const onScroll = () => setScrolled(window.scrollY > 8);
-    onScroll();
-    window.addEventListener('scroll', onScroll, { passive: true });
-    return () => window.removeEventListener('scroll', onScroll);
-  }, []);
 
   // Session email (Supabase first, Demo profile fallback) — refreshed on navigation
   useEffect(() => {
@@ -111,6 +103,10 @@ export default function Navbar() {
     return () => observer.disconnect();
   }, [pathname]);
 
+  // Bara are mereu aceeași suprafață ca pagina (alb de galerie / cărbune mat)
+  const chromeDark = isDark;
+  const hk = sk;
+
   const isHome = pathname === '/' && !pricingVisible;
   const isPricing = (pathname === '/' && pricingVisible) || pathname === '/checkout';
   const isStudio = pathname === '/generate';
@@ -141,15 +137,15 @@ export default function Navbar() {
   };
 
   // ── Styles ──────────────────────────────────────────────────────────────
-  const navHover = isDark ? 'hover:text-zinc-100' : 'hover:text-zinc-900';
+  const navHover = isDark ? 'hover:text-white' : 'hover:text-[#111111]';
   const navLink = (active: boolean) =>
-    `relative h-16 inline-flex items-center text-[13px] transition-colors duration-300 ${
-      active ? sk.strong : `${sk.muted} ${navHover}`
+    `relative h-16 inline-flex items-center text-[11px] font-medium uppercase tracking-[0.24em] transition-colors duration-300 ${
+      active ? hk.strong : `${hk.muted} ${navHover}`
     }`;
   const activeBar = (active: boolean) =>
-    `absolute inset-x-0 -bottom-px h-px transition-opacity duration-200 ${
+    `absolute inset-x-0 -bottom-px h-[2px] transition-opacity duration-200 ${
       active ? 'opacity-100' : 'opacity-0'
-    } ${isDark ? 'bg-emerald-400' : 'bg-emerald-700'}`;
+    } ${isDark ? 'bg-white' : 'bg-[#111111]'}`;
   const mobileTab = (active: boolean) =>
     `flex flex-col items-center justify-center gap-1 text-[9px] tracking-[0.18em] uppercase font-mono touch-manipulation transition-colors ${
       active ? `${sk.strong}` : sk.dim
@@ -158,14 +154,7 @@ export default function Navbar() {
   const initials = (email ?? '').replace(/[^a-zA-Z0-9]/g, '').slice(0, 2).toUpperCase();
   const isAgency = tier === 'agency';
   const tierLabel = tier === 'agency' ? 'AGENCY' : tier === 'pro' ? 'PRO' : 'STARTER';
-  const tierColor =
-    tier === 'agency'
-      ? isDark
-        ? 'text-emerald-300'
-        : 'text-emerald-800'
-      : tier === 'pro'
-        ? sk.strong
-        : sk.dim;
+  const tierColor = tier === 'agency' || tier === 'pro' ? sk.strong : sk.dim;
 
   const menuItem = `w-full h-10 px-3 flex items-center gap-2.5 text-xs text-left transition-colors cursor-pointer touch-manipulation ${sk.rowHover}`;
 
@@ -174,18 +163,18 @@ export default function Navbar() {
       {/* ── TOP HEADER ───────────────────────────────────────────────────── */}
       <header
         className={`sticky top-0 z-40 border-b pt-[env(safe-area-inset-top)] transition-colors duration-500 print:hidden ${
-          scrolled ? `backdrop-blur-xl ${sk.header}` : 'border-transparent'
-        }`}
+          isDark ? 'bg-[#0B0B0C]/95 border-[#262629] text-[#F5F5F5]' : 'bg-white/95 border-[#E5E5E5] text-[#111111]'
+        } backdrop-blur-md`}
       >
-        <div className={`${CONTAINER} h-16 flex items-center justify-between gap-6`}>
+        <div className={`${CONTAINER} h-16 grid grid-cols-[1fr_auto] md:grid-cols-[1fr_auto_1fr] items-center gap-6`}>
           <div className="flex items-center gap-5">
             <Link href="/" onClick={handleHomeClick} className="touch-manipulation" aria-label="SUCVAR">
-              <SucvarLogo size={28} withWordmark isDark={isDark} />
+              <SucvarLogo size={28} withWordmark isDark={chromeDark} />
             </Link>
           </div>
 
           {/* Desktop nav */}
-          <nav className="hidden md:flex items-center gap-8">
+          <nav className="hidden md:flex items-center justify-center gap-8 lg:gap-10">
             <Link href="/" onClick={handleHomeClick} className={navLink(isHome)}>
               {isRo ? 'Acasă' : 'Home'}
               <span className={activeBar(isHome)} />
@@ -210,12 +199,12 @@ export default function Navbar() {
           </nav>
 
           {/* Right controls */}
-          <div className="flex items-center gap-2">
+          <div className="flex items-center justify-end gap-2">
             {/* RO | EN flush segmented */}
             <div
               role="group"
               aria-label="Language"
-              className={`flex h-8 items-center border rounded-sm p-0.5 ${sk.line}`}
+              className={`flex h-8 items-center border p-0.5 ${hk.line}`}
             >
               {(['ro', 'en'] as Language[]).map((l) => (
                 <button
@@ -223,8 +212,8 @@ export default function Navbar() {
                   type="button"
                   onClick={() => handleLang(l)}
                   aria-pressed={lang === l}
-                  className={`h-full rounded-[1px] px-2.5 ${EYEBROW} cursor-pointer touch-manipulation transition-colors duration-300 ${
-                    lang === l ? sk.segOn : sk.segOff
+                  className={`h-full px-2.5 ${EYEBROW} cursor-pointer touch-manipulation transition-colors duration-300 ${
+                    lang === l ? hk.segOn : hk.segOff
                   }`}
                 >
                   {l}
@@ -236,12 +225,12 @@ export default function Navbar() {
               type="button"
               onClick={handleTheme}
               aria-label="Toggle theme"
-              className={`h-8 w-8 inline-flex items-center justify-center border rounded-sm cursor-pointer touch-manipulation transition-colors ${sk.btnGhost}`}
+              className={`h-8 w-8 inline-flex items-center justify-center border cursor-pointer touch-manipulation transition-colors ${hk.btnGhost}`}
             >
               {isDark ? <Sun className="w-3.5 h-3.5" /> : <Moon className="w-3.5 h-3.5" />}
             </button>
 
-            <PlanBadge isDark={isDark} isRo={isRo} />
+            <PlanBadge isDark={chromeDark} isRo={isRo} />
 
             {/* Avatar + dropdown */}
             {email ? (
@@ -252,13 +241,9 @@ export default function Navbar() {
                   aria-haspopup="menu"
                   aria-expanded={menuOpen}
                   aria-label={isRo ? 'Meniu cont' : 'Account menu'}
-                  className={`h-8 w-8 inline-flex items-center justify-center rounded-sm border cursor-pointer touch-manipulation transition-opacity hover:opacity-80 ${
-                    isAgency
-                      ? isDark
-                        ? 'border-emerald-400/60'
-                        : 'border-emerald-700/60'
-                      : sk.line
-                  } ${isDark ? 'bg-zinc-900 text-zinc-100' : 'bg-zinc-100 text-zinc-900'}`}
+                  className={`h-8 w-8 inline-flex items-center justify-center rounded-full border cursor-pointer touch-manipulation transition-opacity hover:opacity-80 ${
+                    isAgency ? (isDark ? 'border-white' : 'border-[#111111]') : sk.line
+                  } ${isDark ? 'bg-[#141416] text-[#F5F5F5]' : 'bg-[#F5F5F5] text-[#111111]'}`}
                 >
                   <span className="font-mono text-[10.5px] tracking-wider">{initials || '··'}</span>
                 </button>
@@ -266,7 +251,7 @@ export default function Navbar() {
                 {menuOpen && (
                   <div
                     role="menu"
-                    className={`absolute right-0 mt-2 w-60 border rounded-sm overflow-hidden z-50 backdrop-blur-md ${sk.popover}`}
+                    className={`absolute right-0 mt-2 w-60 border overflow-hidden z-50 ${sk.popover}`}
                   >
                     <div className={`px-3 py-3 border-b ${sk.line}`}>
                       <p className={`${EYEBROW} ${sk.dim}`}>{isRo ? 'Autentificat ca' : 'Signed in as'}</p>
@@ -305,7 +290,7 @@ export default function Navbar() {
             ) : (
               <Link
                 href="/login"
-                className={`inline-flex items-center h-8 px-3 rounded-sm ${EYEBROW} transition-colors touch-manipulation ${sk.btn}`}
+                className={`inline-flex items-center h-8 px-3 ${EYEBROW} transition-colors touch-manipulation ${hk.btn}`}
               >
                 {isRo ? 'Autentificare' : 'Sign in'}
               </Link>

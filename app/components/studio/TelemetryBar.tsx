@@ -40,10 +40,10 @@ export default function TelemetryBar({ lang, isDark, isLoading, statusLabel, mod
                 {Array.from({ length: Math.max(0, Number(plan.limit) || 0) }).map((_, i) => (
                   <span
                     key={i}
-                    className={`h-1.5 w-3 rounded-[1px] ${
+                    className={`h-1.5 w-3 rounded-full ${
                       i < Number(plan.used)
-                        ? isDark ? 'bg-emerald-400' : 'bg-emerald-700'
-                        : isDark ? 'bg-white/[0.12]' : 'bg-black/[0.12]'
+                        ? isDark ? 'bg-white' : 'bg-[#111111]'
+                        : isDark ? 'bg-white/[0.14]' : 'bg-[#111111]/[0.12]'
                     }`}
                   />
                 ))}

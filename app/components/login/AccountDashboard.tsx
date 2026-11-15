@@ -72,23 +72,23 @@ export default function AccountDashboard({
             src={avatarUrl}
             alt={loggedUser}
             referrerPolicy="no-referrer"
-            className="w-12 h-12 rounded-md object-cover border border-stone-300/40"
+            className="w-12 h-12 rounded-sm object-cover border border-neutral-300/40"
           />
         ) : (
           <div
-            className={`w-12 h-12 rounded-md flex items-center justify-center text-base font-bold uppercase ${ui.btn}`}
+            className={`w-12 h-12 rounded-sm flex items-center justify-center text-base font-bold uppercase ${ui.btn}`}
           >
             {loggedUser[0]}
           </div>
         )}
         <div>
           <div className="flex items-center gap-2">
-            <span className="text-xs font-mono uppercase px-2 py-0.5 rounded-sm bg-[#3B4D43] text-white">
+            <span className="text-xs font-mono uppercase px-2 py-0.5 rounded-full bg-[#111111] text-white dark:bg-white dark:text-[#111111]">
               {userRole}
             </span>
             <span
-              className={`text-[10px] font-mono font-semibold uppercase px-2 py-0.5 rounded-sm border tracking-widest ${
-                plan.isPro ? 'bg-[#3B4D43] text-white border-[#3B4D43]' : `${ui.muted} border-current`
+              className={`text-[10px] font-mono font-semibold uppercase px-2 py-0.5 rounded-full border tracking-widest ${
+                plan.isPro ? 'bg-[#111111] text-white border-[#111111] dark:bg-white dark:text-[#111111] dark:border-white' : `${ui.muted} border-current`
               }`}
             >
               {plan.isPro ? 'PRO' : 'STUDIO'}
@@ -116,7 +116,7 @@ export default function AccountDashboard({
       <div className="flex items-center gap-3">
         <Link
           href="/generate"
-          className={`inline-flex items-center gap-2 h-10 px-5 rounded-md text-xs font-semibold uppercase tracking-widest touch-manipulation ${ui.btn}`}
+          className={`inline-flex items-center gap-2 h-10 px-5 rounded-sm text-xs font-semibold uppercase tracking-widest touch-manipulation ${ui.btn}`}
         >
           <Plus className="w-4 h-4" />
           <span>{t('Proiect nou', 'New project')}</span>
@@ -124,7 +124,7 @@ export default function AccountDashboard({
         <button
           type="button"
           onClick={onLogout}
-          className={`inline-flex items-center gap-1.5 h-10 px-4 rounded-md border text-xs font-semibold uppercase tracking-widest cursor-pointer touch-manipulation ${ui.btnGhost}`}
+          className={`inline-flex items-center gap-1.5 h-10 px-4 rounded-sm border text-xs font-semibold uppercase tracking-widest cursor-pointer touch-manipulation ${ui.btnGhost}`}
         >
           <LogOut className="w-3.5 h-3.5" />
           <span>{t('Ieșire', 'Sign out')}</span>
@@ -185,7 +185,7 @@ export default function AccountDashboard({
           </p>
           <Link
             href="/generate"
-            className={`inline-flex items-center gap-2 h-10 px-6 rounded-md text-xs font-semibold uppercase tracking-widest touch-manipulation ${ui.btn}`}
+            className={`inline-flex items-center gap-2 h-10 px-6 rounded-sm text-xs font-semibold uppercase tracking-widest touch-manipulation ${ui.btn}`}
           >
             <span>{t('Deschide Studio', 'Open Studio')}</span>
             <ArrowRight className="w-3.5 h-3.5" />
@@ -235,10 +235,10 @@ export default function AccountDashboard({
                     </div>
                   )}
 
-                  <span className="absolute top-3 left-3 bg-black/75 backdrop-blur-sm text-white text-[10px] font-mono uppercase tracking-widest px-2.5 py-1 rounded-sm">
+                  <span className="absolute top-3 left-3 bg-black/70 backdrop-blur-sm text-white text-[10px] font-mono uppercase tracking-widest px-2.5 py-1 rounded-full">
                     {styleLabel}
                   </span>
-                  <span className="absolute bottom-3 right-3 bg-[#3B4D43] text-white text-[10px] font-semibold uppercase tracking-widest px-2.5 py-1 rounded-sm">
+                  <span className="absolute bottom-3 right-3 bg-[#111111] text-white dark:bg-white dark:text-[#111111] text-[10px] font-semibold uppercase tracking-widest px-2.5 py-1 rounded-full">
                     {t('Vezi devizul →', 'View specs →')}
                   </span>
                 </div>

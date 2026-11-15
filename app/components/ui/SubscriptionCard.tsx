@@ -37,7 +37,7 @@ export function SubscriptionCard({ plan, isRo, isDark }: SubscriptionProps & { i
   const dateLabel = plan.cancelAtPeriodEnd ? t('Expiră la', 'Expires on') : t('Următoarea reînnoire', 'Next renewal');
 
   const stat = (label: string, value: React.ReactNode, strong = false) => (
-    <div className={`p-4 rounded-md ${ui.soft}`}>
+    <div className={`p-4 rounded-sm ${ui.soft}`}>
       <p className={eyebrow}>{label}</p>
       <p className={`mt-2 ${strong ? 'text-2xl font-mono font-semibold' : 'text-base font-semibold'}`}>{value}</p>
     </div>
@@ -48,22 +48,22 @@ export function SubscriptionCard({ plan, isRo, isDark }: SubscriptionProps & { i
       <div className="flex flex-wrap items-center justify-between gap-3">
         <h2 className="text-sm font-semibold uppercase tracking-[0.2em]">{t('Abonament', 'Subscription')}</h2>
         {plan.cancelAtPeriodEnd && isPaid && (
-          <span className={`text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-sm border ${ui.muted} border-current`}>
+          <span className={`text-[10px] font-mono uppercase tracking-widest px-2 py-0.5 rounded-full border ${ui.muted} border-current`}>
             {t('Anulat — activ până la final', 'Canceled — active until end')}
           </span>
         )}
       </div>
 
       {plan.isLoading ? (
-        <div className={`h-24 rounded-md animate-pulse ${ui.soft}`} />
+        <div className={`h-24 rounded-sm animate-pulse ${ui.soft}`} />
       ) : (
         <>
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3">
             {stat(
               t('Plan activ', 'Active plan'),
               <span
-                className={`inline-block text-xs font-mono px-2 py-0.5 rounded-sm tracking-widest ${
-                  isPaid ? 'bg-[#3B4D43] text-white' : `border border-current ${ui.muted}`
+                className={`inline-block text-xs font-mono px-2 py-0.5 rounded-full tracking-widest ${
+                  isPaid ? 'bg-[#111111] text-white dark:bg-white dark:text-[#111111]' : `border border-current ${ui.muted}`
                 }`}
               >
                 {planName(plan.tier)}

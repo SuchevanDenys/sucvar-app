@@ -1,5 +1,5 @@
 // app/lib/theme/skin.ts
-// SUCVAR design skin — single source of truth for the "Dark Architecture" look.
+// SUCVAR design skin — single source of truth for the monochrome gallery look.
 // Presentational components that use it live in components/ui/Editorial.tsx.
 // Dark is the primary skin; light is a faithful inversion so the theme toggle keeps working.
 
@@ -12,10 +12,10 @@ export interface Skin {
   popover: string;  // dropdowns / menus
   line: string;     // border colour for 1px dividers
   divide: string;   // divide-y colour
-  strong: string;   // pure-white titles
-  muted: string;    // silver subtitles
+  strong: string;   // primary ink titles
+  muted: string;    // neutral grey subtitles
   dim: string;      // tertiary text
-  accent: string;   // emerald accent text
+  accent: string;   // emphasis text (monochrome)
   input: string;    // input / select borders + states (use with `border`)
   btn: string;      // primary button
   btnGhost: string; // secondary button
@@ -29,58 +29,59 @@ export interface Skin {
 const GRID_DARK =
   'bg-[linear-gradient(to_right,rgba(255,255,255,0.035)_1px,transparent_1px),linear-gradient(to_bottom,rgba(255,255,255,0.035)_1px,transparent_1px)] bg-[size:56px_56px]';
 const GRID_LIGHT =
-  'bg-[linear-gradient(to_right,rgba(0,0,0,0.05)_1px,transparent_1px),linear-gradient(to_bottom,rgba(0,0,0,0.05)_1px,transparent_1px)] bg-[size:56px_56px]';
+  'bg-[linear-gradient(to_right,rgba(17,17,17,0.04)_1px,transparent_1px),linear-gradient(to_bottom,rgba(17,17,17,0.04)_1px,transparent_1px)] bg-[size:56px_56px]';
 
+// Monochrome Scandinavian gallery: #FFFFFF / #F5F5F5 / #E5E5E5 / #111111 · dark #0B0B0C / #141416 / #262629.
 export function getSkin(isDark: boolean): Skin {
   if (isDark) {
     return {
-      page: 'bg-[#09090B] text-zinc-100 selection:bg-emerald-400/25',
-      header: 'bg-[#09090B]/80 border-white/[0.06]',
-      card: 'bg-zinc-900/40 backdrop-blur-sm border-white/[0.08]',
-      cell: 'bg-[#0B0B0E]',
-      gap: 'bg-white/[0.06]',
-      popover: 'bg-[#0E0E11] border-white/[0.1] text-zinc-100 ring-1 ring-black',
-      line: 'border-white/[0.06]',
-      divide: 'divide-white/[0.06]',
-      strong: 'text-white',
-      muted: 'text-zinc-400',
-      dim: 'text-zinc-500',
-      accent: 'text-emerald-400',
+      page: 'bg-[#0B0B0C] text-[#F5F5F5] selection:bg-white/20',
+      header: 'bg-[#0B0B0C]/90 backdrop-blur-md border-[#262629]',
+      card: 'bg-[#141416] border-[#262629]',
+      cell: 'bg-[#141416]',
+      gap: 'bg-[#262629]',
+      popover: 'bg-[#141416] border-[#262629] text-[#F5F5F5] shadow-[0_16px_40px_-16px_rgba(0,0,0,0.7)]',
+      line: 'border-[#262629]',
+      divide: 'divide-[#262629]',
+      strong: 'text-[#F5F5F5]',
+      muted: 'text-[#A1A1AA]',
+      dim: 'text-[#A1A1AA]/80',
+      accent: 'text-white',
       input:
-        'bg-zinc-950/60 border-white/[0.08] text-zinc-100 placeholder:text-zinc-600 hover:border-white/[0.16] focus:border-emerald-400/60 focus:outline-none focus:ring-0',
-      btn: 'bg-zinc-100 text-zinc-950 hover:bg-white active:scale-[0.98] active:bg-zinc-200 border border-transparent shadow-[0_1px_0_rgba(255,255,255,0.5)_inset,0_1px_2px_rgba(0,0,0,0.5)] transition-[background-color,transform,box-shadow]',
+        'bg-[#0B0B0C] border-[#262629] text-[#F5F5F5] placeholder:text-[#71717A] hover:border-[#3F3F46] focus:border-[#F5F5F5] focus:outline-none focus:ring-0',
+      btn: 'bg-white text-[#111111] hover:bg-[#E5E5E5] active:scale-[0.98] active:bg-[#D4D4D4] border border-transparent transition-[background-color,transform]',
       btnGhost:
-        'border border-white/[0.1] text-zinc-300 hover:bg-white/[0.04] hover:text-white hover:border-white/[0.18] active:scale-[0.98] active:bg-white/[0.07] transition-[background-color,border-color,color,transform]',
-      segOn: 'bg-white/[0.09] text-white',
-      segOff: 'text-zinc-400 hover:text-zinc-100 hover:bg-white/[0.03]',
-      option: 'bg-zinc-900 text-zinc-100',
+        'border border-[#262629] text-[#F5F5F5] hover:bg-[#1C1C1F] hover:border-[#F5F5F5]/50 active:scale-[0.98] transition-[background-color,border-color,color,transform]',
+      segOn: 'bg-white text-[#111111]',
+      segOff: 'text-[#A1A1AA] hover:text-[#F5F5F5] hover:bg-[#1C1C1F]',
+      option: 'bg-[#141416] text-[#F5F5F5]',
       grid: GRID_DARK,
-      rowHover: 'hover:bg-white/[0.03]',
+      rowHover: 'hover:bg-[#1C1C1F]',
     };
   }
   return {
-    page: 'bg-[#FAFAF9] text-zinc-900 selection:bg-emerald-500/20',
-    header: 'bg-[#FAFAF9]/80 border-black/[0.07]',
-    card: 'bg-white/70 backdrop-blur-sm border-black/[0.08]',
+    page: 'bg-white text-[#111111] selection:bg-[#111111]/15',
+    header: 'bg-white/90 backdrop-blur-md border-[#E5E5E5]',
+    card: 'bg-white border-[#E5E5E5]',
     cell: 'bg-white',
-    gap: 'bg-black/[0.07]',
-    popover: 'bg-white border-black/[0.1] text-zinc-900 ring-1 ring-black/5',
-    line: 'border-black/[0.07]',
-    divide: 'divide-black/[0.07]',
-    strong: 'text-zinc-950',
-    muted: 'text-zinc-600',
-    dim: 'text-zinc-600/90',
-    accent: 'text-emerald-700',
+    gap: 'bg-[#E5E5E5]',
+    popover: 'bg-white border-[#E5E5E5] text-[#111111] shadow-[0_16px_40px_-20px_rgba(0,0,0,0.25)]',
+    line: 'border-[#E5E5E5]',
+    divide: 'divide-[#E5E5E5]',
+    strong: 'text-[#111111]',
+    muted: 'text-[#666666]',
+    dim: 'text-[#666666]/85',
+    accent: 'text-[#111111]',
     input:
-      'bg-white border-black/[0.1] text-zinc-900 placeholder:text-zinc-400 hover:border-black/[0.22] focus:border-emerald-600/70 focus:outline-none focus:ring-0',
-    btn: 'bg-zinc-950 text-white hover:bg-zinc-800 active:scale-[0.98] active:bg-zinc-900 border border-transparent shadow-[0_1px_0_rgba(255,255,255,0.12)_inset,0_1px_2px_rgba(0,0,0,0.25)] transition-[background-color,transform,box-shadow]',
+      'bg-white border-[#E5E5E5] text-[#111111] placeholder:text-[#A3A3A3] hover:border-[#BDBDBD] focus:border-[#111111] focus:outline-none focus:ring-0',
+    btn: 'bg-[#111111] text-white hover:bg-[#2A2A2A] active:scale-[0.98] active:bg-black border border-transparent transition-[background-color,transform]',
     btnGhost:
-      'border border-black/[0.12] text-zinc-700 hover:bg-black/[0.04] hover:text-zinc-950 hover:border-black/[0.22] active:scale-[0.98] active:bg-black/[0.07] transition-[background-color,border-color,color,transform]',
-    segOn: 'bg-black/[0.07] text-zinc-950',
-    segOff: 'text-zinc-500 hover:text-zinc-900 hover:bg-black/[0.03]',
-    option: 'bg-white text-zinc-900',
+      'border border-[#E5E5E5] text-[#111111] hover:bg-[#F5F5F5] hover:border-[#111111] active:scale-[0.98] transition-[background-color,border-color,color,transform]',
+    segOn: 'bg-[#111111] text-white',
+    segOff: 'text-[#666666] hover:text-[#111111] hover:bg-[#F5F5F5]',
+    option: 'bg-white text-[#111111]',
     grid: GRID_LIGHT,
-    rowHover: 'hover:bg-black/[0.03]',
+    rowHover: 'hover:bg-[#F5F5F5]',
   };
 }
 
@@ -92,7 +93,7 @@ export const CONTAINER = 'w-full max-w-[1240px] mx-auto px-6 lg:px-10';
 
 /** 1px horizontal rule used next to eyebrows (Lovable `h-px w-8 bg-border-strong`). */
 export function ruleClass(isDark: boolean): string {
-  return isDark ? 'bg-white/[0.18]' : 'bg-black/[0.2]';
+  return isDark ? 'bg-[#F5F5F5]/25' : 'bg-[#111111]/25';
 }
 
 
@@ -102,5 +103,5 @@ export function swatchClass(isDark: boolean, size: 'sm' | 'md' = 'md'): string {
   const ring = isDark
     ? 'border-white/20 shadow-[inset_0_0_0_1px_rgba(0,0,0,0.35)]'
     : 'border-black/15 shadow-[inset_0_0_0_1px_rgba(255,255,255,0.4)]';
-  return `${dim} rounded-[2px] border ${ring} transition-transform duration-200 group-hover:scale-110`;
+  return `${dim} rounded-sm border ${ring} transition-transform duration-200 group-hover:scale-110`;
 }

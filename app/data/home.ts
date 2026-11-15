@@ -2,11 +2,13 @@
 // Static content of the landing page (hero metrics, case studies, process, formulas, suppliers).
 
 // ── Hero proof metrics ──────────────────────────────────────────────────────
+// Insigne de telemetrie din hero. Valorile sunt capabilități reale ale produsului,
+// nu metrici de marketing: numărul de stiluri e derivat în page.tsx din catalog.
 export const HERO_STATS = [
-  { value: '45s', ro: 'față de 6 ore de releveu și metraj manual', en: 'vs. 6 hours of manual survey & takeoff' },
-  { value: '15,000+ m²', ro: 'simulați și calculați normativ', en: 'simulated & norm-calculated' },
-  { value: '400+', ro: 'specificații mapate la standarde europene (SR EN, ISO, DIN)', en: 'specifications mapped to European Standards (SR EN, ISO, DIN)' },
-  { value: '0%', ro: 'derivă de specificație între randarea AI și execuție', en: 'specification drift between AI render and execution' },
+  { value: '12', ro: 'Limbaje de design, fiecare cu materiale și lumină proprii', en: 'Design languages, each with its own materials and light' },
+  { value: 'BOM', ro: 'Deviz elegant, recalculat pe loc la fiecare schimbare', en: 'An elegant estimate, recalculated instantly as you refine' },
+  { value: 'PDF', ro: 'Dosare B2B rafinate: Blueprint și Material Passport', en: 'Refined B2B dossiers: Blueprint and Material Passport' },
+  { value: '±4 mm', ro: 'precizie în calcul, pornind de la cotele tale', en: 'precision in every calculation, from your own dimensions' },
 ];
 
 // ── Case-study imagery → /public/showcase/ ──────────────────────────────────
@@ -46,9 +48,9 @@ export const CASES: CaseStudy[] = [
     listTitleRo: 'Materiale calculate (extras)',
     listTitleEn: 'Calculated materials (excerpt)',
     materials: [
-      { nameRo: 'Parchet triplustratificat din stejar', nameEn: 'Engineered oak parquet', qty: '75.2 m²', std: 'EN 13489' },
-      { nameRo: 'Lamele acustice din fetru', nameEn: 'Acoustic felt slats', qty: '18.0 m²', std: 'EN ISO 354' },
-      { nameRo: 'Șină magnetică 48V', nameEn: '48V magnetic track', qty: '14.0 ml', std: 'EN 60598' },
+      { nameRo: 'Parchet triplustratificat din stejar', nameEn: 'Engineered oak parquet', qty: '75.2 m²', std: 'Stejar · 14 mm' },
+      { nameRo: 'Lamele acustice din fetru', nameEn: 'Acoustic felt slats', qty: '18.0 m²', std: 'Fetru · acustic' },
+      { nameRo: 'Șină magnetică 48V', nameEn: '48V magnetic track', qty: '14.0 ml', std: 'Lumină caldă' },
     ],
   },
   {
@@ -62,25 +64,25 @@ export const CASES: CaseStudy[] = [
     meta: [
       { label: 'Scope', value: '240 m² facade' },
       { label: 'Envelope', value: 'Ventilated ceramic' },
-      { label: 'Fire class', value: 'Euroclass A1' },
+      { label: 'Finish', value: 'Matte ceramic' },
     ],
-    summaryRo: 'Fațadă ventilată din ceramică peste un înveliș termic incombustibil (Euroclass A1). Cantitățile de panouri, structură și izolație provin din același model de suprafață.',
-    summaryEn: 'Ventilated ceramic cladding over a non-combustible thermal envelope (Euroclass A1). Panel, substructure and insulation quantities come from the same surface model.',
+    summaryRo: 'O fațadă ventilată din ceramică mată, ridicată peste un înveliș izolant discret. Panourile, structura și izolația se nasc din același desen al suprafeței.',
+    summaryEn: 'A ventilated matte-ceramic facade over a quiet insulating envelope. Panels, structure and insulation all grow from the same drawing of the surface.',
     listTitleRo: 'Sinteză inginerească',
     listTitleEn: 'Engineering summary',
     materials: [
-      { nameRo: 'Panouri ceramice pentru fațadă ventilată', nameEn: 'Ventilated ceramic panels', qty: '252 m²', std: 'EN 14411' },
-      { nameRo: 'Vată minerală bazaltică, clasa A1', nameEn: 'Mineral wool, Euroclass A1', qty: '252 m²', std: 'EN 13501-1' },
-      { nameRo: 'Substructură din aluminiu cu rupere termică', nameEn: 'Thermally-broken aluminium substructure', qty: '240 m²', std: 'EN 1999' },
+      { nameRo: 'Panouri ceramice pentru fațadă ventilată', nameEn: 'Ventilated ceramic panels', qty: '252 m²', std: 'Ceramică' },
+      { nameRo: 'Vată minerală bazaltică', nameEn: 'Basalt mineral wool', qty: '252 m²', std: 'Bazalt · A1' },
+      { nameRo: 'Substructură din aluminiu cu rupere termică', nameEn: 'Thermally-broken aluminium substructure', qty: '240 m²', std: 'Aluminiu' },
     ],
   },
 ];
 
 // ── Supplier ecosystem ──────────────────────────────────────────────────────
-// Deep-link URL templates: {q} is replaced with the encoded normative search term.
+// Deep-link URL templates: {q} is replaced with the encoded search term.
 // Verify each template against the live retailer site before launch; they change.
 export const SAMPLE_QUERY = 'parchet triplustratificat stejar 14 mm';
-export const SAMPLE_PARAMS = ['EN 13489', '14 mm', 'wear layer 3.5 mm', '+10% waste'];
+export const SAMPLE_PARAMS = ['stejar', '14 mm', 'strat uzură 3.5 mm', '+10% rezervă'];
 
 export const SUPPLIERS = [
   { name: 'Dedeman', roleRo: 'Materiale de construcții și finisaje', roleEn: 'Construction & finishing materials', url: 'https://www.dedeman.ro/ro/cautare?q={q}' },
@@ -91,12 +93,12 @@ export const SUPPLIERS = [
 
 export const LOOP_STEPS = [
   {
-    ro: 'SUCVAR generează termenul de căutare normativ și parametrii tehnici exacți.',
-    en: 'SUCVAR generates the normative search term and exact technical parameters.',
+    ro: 'SUCVAR formulează căutarea potrivită, cu dimensiunile și finisajul exact.',
+    en: 'SUCVAR phrases the right search, with exact dimensions and finish.',
   },
   {
-    ro: 'Fiecare linie din deviz primește un deep-link direct către magazinul ales.',
-    en: 'Each bill-of-materials line gets a direct deep-link to the retailer you choose.',
+    ro: 'Fiecare linie din deviz primește un link direct către magazinul ales.',
+    en: 'Each line of the estimate gets a direct link to the retailer you choose.',
   },
   {
     ro: 'Exporți devizul ca CSV direct în sistemul de cerere de ofertă al antreprenorului.',
@@ -109,36 +111,71 @@ export const STEPS = [
   {
     number: '01',
     icon: Ruler,
-    titleRo: 'Cotele',
-    titleEn: 'Dimensions',
-    descRo: 'Introduci lățimea, lungimea, înălțimea și numărul de uși și ferestre.',
-    descEn: 'Enter width, length, height and the number of doors and windows.',
-    meta: '±4 mm · W × L × H',
+    titleRo: 'Geometrie parametrică a încăperii',
+    titleEn: 'Parametric Room Geometry',
+    descRo: 'Fotografia și cotele (L × l × H, uși, ferestre) fixează volumul: arii nete, perimetre și deschideri sunt calculate înainte de orice randare.',
+    descEn: 'The photo and dimensions (W × L × H, doors, windows) fix the volume: net areas, perimeters and openings are computed before any rendering.',
+    meta: 'W × L × H · ±4 mm',
   },
   {
     number: '02',
     icon: Cpu,
-    titleRo: 'Proiectul',
-    titleEn: 'Design',
-    descRo: 'Încarci fotografia spațiului. Structura rămâne intactă, stilul se schimbă.',
-    descEn: 'Upload a photo of the space. Structure stays intact, only the style changes.',
-    meta: 'IMG → RENDER',
+    titleRo: 'Sinteză neurală constrânsă de materiale',
+    titleEn: 'Material-Constrained Neural Synthesis',
+    descRo: 'Modelul primește structura camerei plus fișa stilului: pardoseală, pereți, accente și temperatură de culoare intră direct în prompt.',
+    descEn: 'The model receives the room structure plus the style spec: flooring, walls, accents and colour temperature go straight into the prompt.',
+    meta: 'IMG + SPEC → RENDER',
   },
   {
     number: '03',
     icon: FileCheck2,
-    titleRo: 'Specificația',
-    titleEn: 'Specification',
-    descRo: 'Primești devizul, cantitățile exacte și link-uri către produse.',
-    descEn: 'Get the bill of materials, exact quantities and product links.',
+    titleRo: 'Cost în timp real & export B2B',
+    titleEn: 'Real-Time Cost & B2B Export',
+    descRo: 'Cantitățile din geometrie, înmulțite cu factorul stilului, dau devizul la fiecare modificare. Exporți BOM ca CSV și specificația ca PDF.',
+    descEn: 'Quantities from the geometry, scaled by the style factor, produce the estimate on every change. Export the BOM as CSV and the specification as PDF.',
     meta: 'BOM · CSV · PDF',
   },
 ];
 
-export const NORMS = [
-  'SR EN 1991-1-1', 'SR EN ISO 6946', 'C107/2005', 'P118/1999', 'SR EN 13501-1',
-  'SR EN 12467', 'SR EN 14041', 'I7/2011', 'ISO 19650', 'SR EN 13986',
+// ── Matrice de capabilități pe planuri ──────────────────────────────────────
+// Oglindește regulile reale din app/lib/plan/tiers.ts și PRICING_PLANS:
+// generări nelimitate pentru Pro/Agency, portal /b2b doar pentru Agency.
+// Valori: true = inclus, false = neinclus, text = valoare concretă.
+export type CapabilityValue = boolean | { ro: string; en: string };
+export const CAPABILITY_MATRIX: {
+  ro: string;
+  en: string;
+  starter: CapabilityValue;
+  pro: CapabilityValue;
+  agency: CapabilityValue;
+}[] = [
+  { ro: 'Proiecte / generări Studio', en: 'Studio projects / generations', starter: { ro: '3 / lună', en: '3 / month' }, pro: { ro: 'Nelimitat', en: 'Unlimited' }, agency: { ro: 'Nelimitat', en: 'Unlimited' } },
+  { ro: 'Sisteme arhitecturale cu fișă tehnică', en: 'Architectural systems with technical spec', starter: true, pro: true, agency: true },
+  { ro: 'Deviz detaliat (materiale + cost)', en: 'Detailed materials & cost estimate', starter: true, pro: true, agency: true },
+  { ro: 'Export PDF Blueprint', en: 'PDF Blueprint export', starter: true, pro: true, agency: true },
+  { ro: 'Material Passport (PDF)', en: 'Material Passport (PDF)', starter: false, pro: true, agency: true },
+  { ro: 'Arhivă de proiecte în cloud', en: 'Cloud project archive', starter: false, pro: true, agency: true },
+  { ro: 'Portal B2B (/b2b)', en: 'B2B portal (/b2b)', starter: false, pro: false, agency: true },
+  { ro: 'Conturi de echipă', en: 'Team seats', starter: false, pro: false, agency: { ro: '5', en: '5' } },
+  { ro: 'Antet tehnic de proiectare în PDF', en: 'Engineering header in PDF', starter: false, pro: false, agency: true },
+  { ro: 'Procesare prioritară', en: 'Priority processing', starter: false, pro: false, agency: true },
 ];
+
+export const TIER_WORKFLOWS = {
+  starter: {
+    ro: 'Un singur spațiu: încarci fotografia, alegi sistemul arhitectural, primești randarea și devizul orientativ.',
+    en: 'A single space: upload the photo, pick the architectural system, get the render and indicative estimate.',
+  },
+  pro: {
+    ro: 'Arhitect sau designer independent: proiecte multiple, arhivă în cloud, Material Passport pentru clientul final.',
+    en: 'Independent architect or designer: multiple projects, cloud archive, Material Passport for the end client.',
+  },
+  agency: {
+    ro: 'Firmă de construcții sau birou de proiectare: portal B2B, echipă de 5 conturi, PDF cu antet tehnic.',
+    en: 'Construction or design firm: B2B portal, 5-seat team, PDF with engineering header.',
+  },
+};
+
 
 export const FORMULAS = [
   { labelRo: 'Arie netă pereți', labelEn: 'Net wall area', formula: 'P × H − (uși × 1.89 + ferestre × 2.10) m²' },

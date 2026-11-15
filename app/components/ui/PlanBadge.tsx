@@ -71,13 +71,13 @@ export default function PlanBadge({ isDark, isRo }: PlanBadgeProps) {
         }
         className={`${base} border opacity-100 ${
           isDark
-            ? 'border-emerald-400/60 bg-emerald-400/10 text-emerald-300 shadow-[0_0_0_1px_rgba(52,211,153,0.15),0_0_12px_rgba(52,211,153,0.12)]'
-            : 'border-emerald-700/60 bg-emerald-700/10 text-emerald-800 shadow-[0_0_0_1px_rgba(4,120,87,0.12)]'
+            ? 'border-white bg-white text-[#111111]'
+            : 'border-[#111111] bg-[#111111] text-white'
         }`}
       >
         <span
           aria-hidden
-          className={`h-1.5 w-1.5 rounded-full ${isDark ? 'bg-emerald-400' : 'bg-emerald-700'}`}
+          className={`h-1.5 w-1.5 rounded-full bg-current`}
         />
         AGENCY
       </Link>
@@ -89,7 +89,7 @@ export default function PlanBadge({ isDark, isRo }: PlanBadgeProps) {
       <Link
         href="/account"
         title={isRo ? 'Plan Professional — generări nelimitate' : 'Professional plan — unlimited generations'}
-        className={`${base} bg-[#3B4D43] text-white opacity-90`}
+        className={`${base} ${isDark ? 'bg-white text-[#111111]' : 'bg-[#111111] text-white'}`}
       >
         PRO
       </Link>
@@ -104,7 +104,7 @@ export default function PlanBadge({ isDark, isRo }: PlanBadgeProps) {
           ? `Plan Starter (gratuit) — ${used ?? 0}/${limit ?? 0} generări luna aceasta. Vezi planurile.`
           : `Starter (free) plan — ${used ?? 0}/${limit ?? 0} generations this month. View plans.`
       }
-      className={`${base} border opacity-70 ${isDark ? 'border-stone-500 text-stone-300' : 'border-stone-400 text-stone-600'}`}
+      className={`${base} border opacity-70 ${isDark ? 'border-[#3F3F46] text-[#A1A1AA]' : 'border-[#BDBDBD] text-[#666666]'}`}
     >
       STARTER
     </Link>

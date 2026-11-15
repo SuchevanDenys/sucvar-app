@@ -12,7 +12,7 @@
 // SSR safety: no Date / Math.random during render (useClientDate for the print header).
 "use client";
 
-import React, { useEffect, useMemo, useState } from 'react';
+import React, { useEffect, useMemo, useRef, useState } from 'react';
 import {
   FileCode,
   FileSpreadsheet,
@@ -63,8 +63,9 @@ import {
   seedScope,
   type ClientMeta,
 } from '@/app/lib/b2b/portfolio';
+import { fetchCloudWorkspaces, mergeCloudIntoLocal, pushWorkspace, workspaceToPayload } from '@/app/lib/b2b/cloud';
 import { getSkin, EYEBROW } from '@/app/lib/theme/skin';
-import { LiveDot, Corners } from '@/app/components/ui/Editorial';
+import { LiveDot } from '@/app/components/ui/Editorial';
 
 export default function B2BPage() {
   const { isDark, isRo } = usePrefs();
@@ -97,6 +98,8 @@ export default function B2BPage() {
   const [seller, setSeller] = useState(loadSeller);
   const [client, setClient] = useState<ClientMeta>(EMPTY_CLIENT);
   const [invoiceNo, setInvoiceNo] = useState('');
+  // Starea sincronizării cu cloud-ul: idle (nimic de arătat) · saving · synced · offline · error
+  const [cloudState, setCloudState] = useState<'idle' | 'saving' | 'synced' | 'offline' | 'error'>('idle');
   const printDate = useClientDate(); // client-only date for the printed header
 
   // Încarcă proiectele DOAR după ce accesul enterprise este confirmat.
@@ -105,9 +108,18 @@ export default function B2BPage() {
   useEffect(() => {
     if (!canLoad || !email) return;
     let alive = true;
-    fetchProjectsFromDb(email)
-      .then((list) => {
+    // Proiectele și devizele din cloud se încarcă în paralel; devizele cloud mai noi se oglindesc
+    // în localStorage ÎNAINTE de `savedWorkspaceIds`, deci `selectProject` le găsește local.
+    // Dacă cloud-ul e indisponibil (offline / neautentificat), rămâne varianta locală.
+    Promise.all([fetchProjectsFromDb(email), fetchCloudWorkspaces()])
+      .then(([list, cloud]) => {
         if (!alive) return;
+        if (cloud.status === 'ok') {
+          mergeCloudIntoLocal(cloud.data);
+          setCloudState('synced');
+        } else if (cloud.status === 'offline' || cloud.status === 'error') {
+          setCloudState(cloud.status);
+        }
         setProjects(list);
         setSavedIds(savedWorkspaceIds());
       })
@@ -124,13 +136,28 @@ export default function B2BPage() {
   }, [seller]);
 
   // Salvare automată a devizului pentru proiectul selectat (client + parametri + linii).
+  // Local: imediat (cache offline). Cloud: cu întârziere de 1,5 s (debounce), ca să nu trimitem
+  // câte un PUT la fiecare tastă; `net`/`gross` sunt calculate mai jos, din aceeași stare.
+  const cloudSeq = useRef(0); // ignoră răspunsurile unui PUT depășit de o modificare mai nouă
+  const totalsRef = useRef({ net: 0, gross: 0 });
   useEffect(() => {
     if (!selectedId) return;
-    saveWorkspace(selectedId, {
+    const ws = {
       client, docNo: invoiceNo, area, region, level, crew, rateOverride, scope,
       contingency, margin, vat, items, updatedAt: new Date().toISOString(),
-    });
-  }, [selectedId, client, invoiceNo, area, region, level, crew, rateOverride, scope, contingency, margin, vat, items]);
+    };
+    saveWorkspace(selectedId, ws);
+    if (!canLoad) return;
+    const seq = ++cloudSeq.current;
+    const timer = setTimeout(() => {
+      setCloudState('saving');
+      pushWorkspace(workspaceToPayload(selectedId, ws, totalsRef.current.net, totalsRef.current.gross)).then((r) => {
+        if (seq !== cloudSeq.current) return;
+        setCloudState(r.status === 'ok' ? 'synced' : r.status === 'local' ? 'idle' : r.status);
+      });
+    }, 1500);
+    return () => clearTimeout(timer);
+  }, [canLoad, selectedId, client, invoiceNo, area, region, level, crew, rateOverride, scope, contingency, margin, vat, items]);
 
   // ── Calculations ────────────────────────────────────────────────────────
   const regionData = REGIONS.find((r) => r.id === region) ?? REGIONS[0];
@@ -162,6 +189,10 @@ export default function B2BPage() {
   const vatAmt = net * (vat / 100);
   const gross = net + vatAmt;
   const uplift = base > 0 ? net / base : 1;
+  // Totalurile curente pentru PUT-ul din cloud (actualizate după randare, citite de efectul de salvare)
+  useEffect(() => {
+    totalsRef.current = { net: round2(net), gross: round2(gross) };
+  }, [net, gross]);
   const workDays = crew > 0 ? Math.ceil(laborHours / (crew * 8)) : 0;
 
   const selectedProject = projects.find((p) => p.id === selectedId) ?? null;
@@ -244,8 +275,8 @@ export default function B2BPage() {
   // ── Shared classes ──────────────────────────────────────────────────────
   const field = `h-9 px-2.5 rounded-sm border text-sm w-full transition-colors ${sk.input}`;
   const numField = `${field} font-mono tabular-nums text-right`;
-  const range = `w-full ${isDark ? 'accent-emerald-400' : 'accent-emerald-700'}`;
-  const panel = `relative border rounded-sm ${sk.card}`;
+  const range = `w-full accent-[var(--foreground)]`;
+  const panel = `relative border rounded-md ${sk.card}`;
   const panelHead = `flex items-center justify-between px-5 h-9 border-b ${sk.line} ${eyebrow}`;
   const lbl = (s: string) => <span className={`block mb-1 ${eyebrow}`}>{s}</span>;
 
@@ -257,7 +288,7 @@ export default function B2BPage() {
       <div className={`min-h-screen font-sans pb-28 ${sk.page}`}>
         <Navbar />
         <div className="max-w-3xl mx-auto px-4 sm:px-6 pt-16">
-          <div className={`h-80 border rounded-sm animate-pulse ${sk.card}`} aria-busy="true" />
+          <div className={`h-80 border rounded-md animate-pulse ${sk.card}`} aria-busy="true" />
         </div>
       </div>
     );
@@ -286,6 +317,14 @@ export default function B2BPage() {
               {t('Spațiu de lucru pentru antreprenori', 'Contractor workspace')}
             </h1>
             {email && <p className={`font-mono text-xs ${sk.dim}`}>{email}</p>}
+            {cloudState !== 'idle' && (
+              <p className={`font-mono text-[11px] ${sk.dim}`} role="status" aria-live="polite">
+                {cloudState === 'saving' && t('Se salvează…', 'Saving…')}
+                {cloudState === 'synced' && t('Salvat în cloud', 'Synced to cloud')}
+                {cloudState === 'offline' && t('Offline — salvat local', 'Offline — saved locally')}
+                {cloudState === 'error' && t('Sincronizare eșuată — salvat local', 'Sync failed — saved locally')}
+              </p>
+            )}
             <SubscriptionBadge plan={subscription} isRo={isRo} className={sk.dim} />
           </div>
           <div className="flex flex-wrap items-center gap-2">
@@ -314,7 +353,7 @@ export default function B2BPage() {
                 <span>{String(projects.length).padStart(2, '0')}</span>
               </div>
               {projectsLoading ? (
-                <div className={`m-5 h-24 border rounded-sm animate-pulse ${sk.card}`} aria-busy="true" />
+                <div className={`m-5 h-24 border rounded-md animate-pulse ${sk.card}`} aria-busy="true" />
               ) : projects.length === 0 ? (
                 <p className={`p-8 text-center text-sm ${sk.dim}`}>
                   {t('Nu ai proiecte salvate. Generează și salvează un design în Studio, apoi alege-l aici.', 'No saved projects. Generate and save a design in the Studio, then pick it here.')}
@@ -326,8 +365,8 @@ export default function B2BPage() {
                     const sp = getSpace(p.mode, p.spaceType);
                     return (
                       <li key={p.id}>
-                        <button type="button" onClick={() => selectProject(p)} aria-pressed={active} className={`w-full text-left border rounded-sm overflow-hidden cursor-pointer touch-manipulation transition-colors ${active ? `${sk.accent} border-current` : sk.line} ${sk.rowHover}`}>
-                          <div className={`h-24 flex items-center justify-center ${sk.cell}`}>
+                        <button type="button" onClick={() => selectProject(p)} aria-pressed={active} className={`w-full text-left border rounded-md overflow-hidden cursor-pointer touch-manipulation transition-colors ${active ? `${sk.accent} border-current` : sk.line} ${sk.rowHover}`}>
+                          <div className={`relative h-24 w-full overflow-hidden flex items-center justify-center ${sk.cell}`}>
                             {p.generatedImage ? (
                               // eslint-disable-next-line @next/next/no-img-element
                               <img src={p.generatedImage} alt="" loading="lazy" className="w-full h-full object-cover" />
@@ -335,8 +374,8 @@ export default function B2BPage() {
                               <FolderOpen className={`w-5 h-5 ${sk.dim}`} />
                             )}
                           </div>
-                          <div className="p-3 space-y-1">
-                            <p className={`text-sm font-medium truncate ${sk.strong}`}>{p.title}</p>
+                          <div className={`p-3 space-y-1 ${isDark ? 'bg-[#141416]' : 'bg-white'}`}>
+                            <p className={`text-sm font-semibold line-clamp-1 truncate ${isDark ? 'text-white' : 'text-[#111111]'}`}>{p.title}</p>
                             <p className={`font-mono text-[11px] ${sk.dim}`}>
                               {t(sp.labelRo, sp.labelEn)} · {calculateEngineering(p.dimensions, p.mode, p.spaceType).floorArea} m² · {p.createdAt.slice(0, 10)}
                             </p>
@@ -518,7 +557,6 @@ export default function B2BPage() {
           {/* ── RIGHT: sticky pricing console ───────────────────────────── */}
           <aside className="lg:col-span-4 lg:sticky lg:top-20 space-y-6">
             <section className={panel}>
-              <Corners isDark={isDark} />
               <div className={panelHead}>
                 <span>margin.console</span>
                 <LiveDot label="Live" className={sk.dim} />

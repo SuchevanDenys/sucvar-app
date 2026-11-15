@@ -13,11 +13,9 @@ export default function SucvarLogo({
   withWordmark = false,
   isDark = false,
 }: SucvarLogoProps) {
-  // The origin point is olive green (lighter on dark backgrounds)
-  let oliveColor = '#3B4D43';
-  if (isDark) {
-    oliveColor = '#8FAE9B';
-  }
+  // Monochrome: the origin point follows the ink colour (currentColor); isDark kept for API compatibility
+  void isDark;
+  const inkColor = 'currentColor';
 
   return (
     <span className="inline-flex items-center gap-3">
@@ -34,14 +32,14 @@ export default function SucvarLogo({
         {/* Corner B: bottom bar + right leg (lower half of the S) */}
         <path d="M6 27H26V16" stroke="currentColor" strokeWidth="2.2" strokeLinecap="square" />
         {/* Construction axis through the origin point */}
-        <path d="M6 16H26" stroke={oliveColor} strokeWidth="1" opacity="0.45" />
+        <path d="M6 16H26" stroke={inkColor} strokeWidth="1" opacity="0.45" />
         {/* Origin point + small crosshair ticks */}
-        <circle cx="16" cy="16" r="2.4" fill={oliveColor} />
-        <path d="M16 11.5V13.5M16 18.5V20.5" stroke={oliveColor} strokeWidth="1.2" />
+        <circle cx="16" cy="16" r="2.4" fill={inkColor} />
+        <path d="M16 11.5V13.5M16 18.5V20.5" stroke={inkColor} strokeWidth="1.2" />
       </svg>
 
       {withWordmark && (
-        <span className="text-sm font-semibold uppercase tracking-[0.34em] leading-none">
+        <span className="text-sm font-bold uppercase tracking-[0.34em] leading-none">
           S U C V A R
         </span>
       )}

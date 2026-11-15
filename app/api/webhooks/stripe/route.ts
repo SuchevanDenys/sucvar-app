@@ -22,39 +22,17 @@
 // IMPORTANT: semnătura se verifică pe corpul BRUT (request.text()), nu pe JSON parsat.
 import { NextResponse } from 'next/server';
 import type Stripe from 'stripe';
-import { getAdmin } from '@/app/lib/supabase/admin';
+import { downgradeBySubscriptionId } from '@/app/lib/server/db';
 import { getStripe } from '@/app/lib/billing/stripe';
 import { applyPaidSession, readPaidSession, syncActiveSubscription } from '@/app/lib/server/subscription';
 
-function getAdminOrThrow() {
-  const { client: admin } = getAdmin();
-  if (!admin) throw new Error('Supabase admin neconfigurat (SUPABASE_SERVICE_ROLE_KEY).');
-  return admin;
-}
-
-// Coboară la 'starter' DOAR dacă abonamentul anulat este cel curent al utilizatorului.
-// (Altfel, anularea abonamentului vechi după un upgrade ar anula planul nou.)
+// Coboară la 'starter' DOAR dacă abonamentul anulat este cel curent al utilizatorului
+// (db.ts: altfel, anularea abonamentului vechi după un upgrade ar anula planul nou).
 async function downgradeBySubscription(subscriptionId: string): Promise<void> {
-  const admin = getAdminOrThrow();
-  const { data, error } = await admin
-    .from('profiles')
-    .update({
-      subscription_tier: 'starter',
-      stripe_subscription_id: null,
-      current_period_end: null,
-      billing_interval: null,
-      cancel_at_period_end: false,
-      updated_at: new Date().toISOString(),
-    })
-    .eq('stripe_subscription_id', subscriptionId)
-    .select('id');
-
-  if (error) throw new Error(`Downgrade eșuat: ${error.message}`);
-  if (!data || data.length === 0) {
-    console.log(`[SUCVAR] Abonament ${subscriptionId} ignorat (nu mai este cel curent).`);
-    return;
-  }
-  console.log(`[SUCVAR] ${data[0].id} -> starter`);
+  const userId = await downgradeBySubscriptionId(subscriptionId);
+  console.log(
+    userId ? `[SUCVAR] ${userId} -> starter` : `[SUCVAR] Abonament ${subscriptionId} ignorat (nu mai este cel curent).`
+  );
 }
 
 export async function POST(request: Request) {

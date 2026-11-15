@@ -18,7 +18,7 @@ export default function CaseCard({ c, lang, isDark }: { c: CaseStudy; lang: Lang
   return (
     <article className="group flex flex-col">
       <Frame isDark={isDark} label={c.code} meta={showAfter ? afterLabel : beforeLabel}>
-        <div className={`relative aspect-[16/10] overflow-hidden ${isDark ? 'bg-zinc-900' : 'bg-zinc-200'}`}>
+        <div className={`relative aspect-[16/10] overflow-hidden ${isDark ? 'bg-[#141416]' : 'bg-[#F5F5F5]'}`}>
           {[c.before, c.after].map((src, i) => (
             <Image
               key={src}
@@ -35,7 +35,7 @@ export default function CaseCard({ c, lang, isDark }: { c: CaseStudy; lang: Lang
             role="group"
             aria-label={t('Înainte / După', 'Before / After')}
             className={`absolute right-3 top-3 z-10 flex rounded-sm border p-0.5 backdrop-blur-md ${EYEBROW} ${
-              isDark ? 'bg-zinc-950/60 border-white/[0.1]' : 'bg-white/70 border-black/[0.1]'
+              isDark ? 'bg-[#0B0B0C]/70 border-[#262629]' : 'bg-white/85 border-[#E5E5E5]'
             }`}
           >
             {[false, true].map((after) => (
@@ -44,14 +44,14 @@ export default function CaseCard({ c, lang, isDark }: { c: CaseStudy; lang: Lang
                 type="button"
                 aria-pressed={showAfter === after}
                 onClick={() => setShowAfter(after)}
-                className={`rounded-[1px] px-2.5 py-1 cursor-pointer touch-manipulation transition-colors duration-300 ${
+                className={`rounded-full px-2.5 py-1 cursor-pointer touch-manipulation transition-colors duration-300 ${
                   showAfter === after
                     ? isDark
-                      ? 'bg-zinc-100 text-zinc-950'
-                      : 'bg-zinc-950 text-white'
+                      ? 'bg-white text-[#111111]'
+                      : 'bg-[#111111] text-white'
                     : isDark
-                      ? 'text-zinc-300 hover:text-white'
-                      : 'text-zinc-600 hover:text-zinc-950'
+                      ? 'text-[#A1A1AA] hover:text-white'
+                      : 'text-[#666666] hover:text-[#111111]'
                 }`}
               >
                 {after ? afterLabel : beforeLabel}
@@ -66,7 +66,7 @@ export default function CaseCard({ c, lang, isDark }: { c: CaseStudy; lang: Lang
         <p className={`mt-3 max-w-lg text-sm leading-relaxed ${sk.muted}`}>{t(c.summaryRo, c.summaryEn)}</p>
       </div>
 
-      <dl className={`mt-8 grid grid-cols-3 gap-px border ${sk.line} ${sk.gap}`}>
+      <dl className={`mt-8 grid grid-cols-3 gap-px border rounded-md overflow-hidden ${sk.line} ${sk.gap}`}>
         {[...c.meta, { label: t('Rezultat', 'Output'), value: c.output }].slice(0, 3).map((m) => (
           <div key={m.label} className={`px-4 py-3.5 ${sk.cell}`}>
             <dt className={`${EYEBROW} ${sk.dim}`}>{m.label}</dt>
@@ -96,7 +96,7 @@ export default function CaseCard({ c, lang, isDark }: { c: CaseStudy; lang: Lang
 
       <ul className="mt-4 flex flex-wrap gap-1.5">
         {c.materials.map((m) => (
-          <li key={m.std} className={`rounded-sm border px-2 py-1 font-mono text-[10.5px] ${sk.line} ${sk.muted}`}>
+          <li key={m.std} className={`rounded-full border px-2 py-1 font-mono text-[10.5px] ${sk.line} ${sk.muted}`}>
             {m.std}
           </li>
         ))}

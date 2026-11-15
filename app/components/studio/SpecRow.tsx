@@ -40,7 +40,7 @@ export default function SpecRow({
         checked={checked}
         aria-label={lang === 'ro' ? item.nameRo : item.nameEn}
         onChange={onToggle}
-        className="mt-1 w-4 h-4 rounded-[2px] touch-manipulation cursor-pointer shrink-0 accent-emerald-500"
+        className="mt-1 w-4 h-4 rounded-md touch-manipulation cursor-pointer shrink-0 accent-[var(--foreground)]"
       />
 
       <div className={`flex-1 min-w-0 transition-opacity ${checked ? 'opacity-100' : 'opacity-40'}`}>
@@ -52,7 +52,7 @@ export default function SpecRow({
             </p>
           </div>
           <span
-            className={`shrink-0 px-2 py-1 rounded-sm border font-mono text-[11px] tabular-nums whitespace-nowrap ${sk.line} ${sk.strong}`}
+            className={`shrink-0 px-2 py-1 rounded-full border font-mono text-[11px] tabular-nums whitespace-nowrap ${sk.line} ${sk.strong}`}
           >
             {item.quantity}
           </span>
@@ -71,7 +71,7 @@ export default function SpecRow({
             title={lang === 'ro' ? 'Copiază termenii de căutare' : 'Copy search terms'}
             className={`shrink-0 p-1 rounded-sm transition-colors touch-manipulation cursor-pointer ${sk.segOff}`}
           >
-            {copied ? <Check className="w-3.5 h-3.5 text-emerald-400" /> : <Copy className="w-3.5 h-3.5" />}
+            {copied ? <Check className="w-3.5 h-3.5 text-current" /> : <Copy className="w-3.5 h-3.5" />}
           </button>
         </div>
       </div>

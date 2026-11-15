@@ -5,6 +5,10 @@ export type Language = 'ro' | 'en';
 export type ThemeMode = 'light' | 'dark';
 export type DesignMode = 'interiors' | 'exteriors' | 'gardens';
 export type BudgetTier = 'economy' | 'standard' | 'luxury';
+// Nivelul de intervenție: cât din finisaje se refac (scalează devizul și informează promptul AI)
+export type ScopeLevel = 'refresh' | 'renovation' | 'shell';
+// Presetări rapide de dimensiune, adaptate fiecărui tip de spațiu
+export type SizePresetId = 'compact' | 'standard' | 'spacious';
 export type StoreName = 'IKEA' | 'Mobexpert' | 'Dedeman' | 'eMAG';
 
 // O culoare din paleta unui stil (cod hex + denumire comercială orientativă)
@@ -14,8 +18,33 @@ export interface PaletteSwatch {
   nameEn: string;
 }
 
+// Text bilingv scurt (RO / EN), folosit în fișa tehnică a stilului
+export interface BilingualText {
+  ro: string;
+  en: string;
+}
+
+// Fișa tehnică a unui stil: aceleași date alimentează inspectorul din Studio,
+// landing page-ul ȘI promptul AI (câmpul `promptSpec`).
+export interface StyleSpec {
+  /** 1–2 propoziții: logică spațială, proporții, atmosferă */
+  architecturalBrief: BilingualText;
+  /** Defalcare materiale: pardoseală / pereți / accente (metal, textil, piatră) */
+  materials: {
+    flooring: BilingualText;
+    walls: BilingualText;
+    accents: BilingualText;
+  };
+  /** Profil de iluminare; `kelvin` e temperatura de culoare numerică (pentru afișaj) */
+  lightingSpec: BilingualText & { kelvin: number };
+  /** Motivul multiplicatorului `costFactor` (fără procent — procentul se derivă din factor) */
+  costRationale: BilingualText;
+  /** Fragment scurt EN (materiale + lumină) injectat în promptul AI; ținut sub ~20 tokeni CLIP */
+  promptSpec: string;
+}
+
 // One architectural style (text only, no photos)
-export interface VisualStyle {
+export interface VisualStyle extends StyleSpec {
   id: string;
   nameRo: string;
   nameEn: string;
@@ -40,6 +69,10 @@ export interface RoomDimensions {
   aiStrength: number;
   layoutPreset: string;
   budget: BudgetTier;
+  /** Nivelul de intervenție (implicit „renovation” pentru proiectele salvate înainte de această opțiune) */
+  scope: ScopeLevel;
+  /** Id-urile scenariilor arhitecturale bifate (chips), cel mult MAX_FOCUS_CHIPS */
+  focusIds: string[];
 }
 
 // Result of calculateEngineering()

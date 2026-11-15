@@ -7,22 +7,57 @@
 */
 @import "tailwindcss";
 
+/* `dark:` urmează clasa .dark pusă de usePrefs() pe <html>, nu preferința sistemului */
+@custom-variant dark (&:where(.dark, .dark *));
+
+/* Slidere și checkbox-uri native: cerneală monocromă (negru / alb în dark) */
+input[type="range"], input[type="checkbox"], input[type="radio"] { accent-color: var(--foreground); }
+
 /* ── Tokeni de culoare ──────────────────────────────────────────── */
 :root {
-  --background: #f7f6f2;   /* ivory */
-  --foreground: #1a1a1a;   /* negru mat */
-  --accent:     #3b4d43;   /* verde oliv */
+  /* Paletă monocromă „galerie scandinavă" — zero albastru */
+  --background: #ffffff;   /* alb de galerie */
+  --surface:    #f5f5f5;   /* piatră neutră (carduri, passe-partout) */
+  --border:     #e5e5e5;   /* linie fină */
+  --foreground: #111111;   /* cerneală cărbune */
+  --muted:      #666666;   /* text secundar */
+  --accent:     #111111;   /* butoane primare negre */
+  --accent-ink: #ffffff;
+  color-scheme: light;
+}
+
+html.dark, :root[data-theme="dark"] {
+  --background: #0b0b0c;   /* cărbune mat arhitectural */
+  --surface:    #141416;
+  --border:     #262629;
+  --foreground: #f5f5f5;
+  --muted:      #a1a1aa;
+  --accent:     #ffffff;
+  --accent-ink: #111111;
+  color-scheme: dark;
 }
 
 @theme inline {
   --color-background: var(--background);
   --color-foreground: var(--foreground);
+  --color-surface: var(--surface);
+  --color-hairline: var(--border);
+  --color-muted: var(--muted);
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 }
 
+/* ── Decizii UX globale (flagship polish) ────────────────────────
+   • overflow-x: clip — zero scroll orizontal pe iPhone (390px), fără a rupe `position: sticky`
+   • scroll-behavior: smooth — derulare fluidă la ancore (respectă reduced-motion, mai jos)
+   • scroll-padding-top — ancorele nu dispar sub bara de navigare lipită sus
+   ─────────────────────────────────────────────────────────────── */
+html { overflow-x: clip; scroll-behavior: smooth; scroll-padding-top: 0; }
+
 /* ── Body ────────────────────────────────────────────────────────── */
 body {
+  overflow-x: clip;
+  min-height: 100dvh;
   background: var(--background);
   color: var(--foreground);
   /* Scroll fluid cu inerție pe iOS Safari */
@@ -51,13 +86,13 @@ html {
 /* ── Scrollbar discret (Chromium) ────────────────────────────────── */
 ::-webkit-scrollbar        { width: 6px; height: 6px; }
 ::-webkit-scrollbar-track  { background: transparent; }
-::-webkit-scrollbar-thumb  { background: rgba(0,0,0,.18); border-radius: 9999px; }
-::-webkit-scrollbar-thumb:hover { background: rgba(0,0,0,.32); }
+::-webkit-scrollbar-thumb  { background: rgba(115,115,115,.35); border-radius: 9999px; }
+::-webkit-scrollbar-thumb:hover { background: rgba(115,115,115,.55); }
 
-/* ── Selecție de text (accent oliv) ─────────────────────────────── */
+/* ── Selecție de text (monocrom) ────────────────────────────────── */
 ::selection {
-  background: #3b4d43;
-  color: #fff;
+  background: var(--accent);
+  color: var(--accent-ink);
 }
 
 /* ── Polish UI: focus, tactilitate, animații arhitecturale ─────────
@@ -65,10 +100,10 @@ html {
    – apăsare tactilă pe butoane (scale subtil) cu respect pentru reduced-motion
    – linie de scanare + puls pentru randarea AI
    ─────────────────────────────────────────────────────────────── */
-body { font-feature-settings: "tnum" 0, "cv11" 1; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
+body { font-feature-settings: "cv11" 1; text-rendering: optimizeLegibility; -webkit-font-smoothing: antialiased; }
 
 :where(a, button, [role="button"], summary):focus-visible {
-  outline: 1px solid #34d399;          /* emerald-400 */
+  outline: 2px solid var(--foreground);
   outline-offset: 3px;
   border-radius: 2px;
 }
@@ -91,10 +126,34 @@ body { font-feature-settings: "tnum" 0, "cv11" 1; text-rendering: optimizeLegibi
 }
 .scan-line {
   position: absolute; left: 0; right: 0; top: 0; height: 28%;
-  background: linear-gradient(to bottom, transparent, rgba(52,211,153,.18) 80%, rgba(52,211,153,.9) 99%, transparent 100%);
-  border-bottom: 1px solid rgba(110,231,183,.9);
+  background: linear-gradient(to bottom, transparent, rgba(255,255,255,.14) 80%, rgba(255,255,255,.85) 99%, transparent 100%);
+  border-bottom: 1px solid rgba(255,255,255,.9);
+  mix-blend-mode: difference;
   animation: sucvar-scan 2.4s cubic-bezier(.45,.05,.55,.95) infinite;
   pointer-events: none;
+}
+
+/* Cifre tabulare: prețuri, dimensiuni, metrici și tabele se aliniază vertical pe coloane */
+table, output, time, dd,
+[class*="font-mono"], [class*="tabular"] { font-variant-numeric: tabular-nums; }
+
+/* Media și elemente înglobate nu pot depăși niciodată containerul (cauza clasică a overflow-ului mobil) */
+img, video, canvas, svg { max-width: 100%; }
+img, video { height: auto; }
+
+/* Tactil: fără întârzierea de 300ms la tap pe elementele interactive */
+a, button, [role="button"], summary { touch-action: manipulation; }
+
+/* Respectă notch-ul și home indicator în modul PWA (standalone) */
+@supports (padding: env(safe-area-inset-bottom)) {
+  body { padding-left: env(safe-area-inset-left); padding-right: env(safe-area-inset-right); }
+}
+
+/* Tranziții fine pe elemente interactive (fără a atinge animațiile existente) */
+:where(a, button, [role="button"], input, select, textarea) {
+  transition-property: color, background-color, border-color, box-shadow, transform, opacity;
+  transition-duration: 180ms;
+  transition-timing-function: cubic-bezier(.2,.7,.2,1);
 }
 
 @media (prefers-reduced-motion: reduce) {

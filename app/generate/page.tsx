@@ -15,11 +15,16 @@ import {
 } from 'lucide-react';
 import Navbar from '@/app/components/layout/Navbar';
 import {
+  DEFAULT_SCOPE,
+  MAX_FOCUS_CHIPS,
+  SIZE_PRESET_IDS,
   SPACE_MODES,
   VISUAL_STYLES,
   calculateEngineering,
+  detectSizePreset,
   estimateCost,
   generateSpecItems,
+  getSizePreset,
   getSpace,
   getStyle,
 } from '@/app/data/catalog';
@@ -33,8 +38,6 @@ import { usePrefs } from '@/app/lib/theme/usePrefs';
 import { STORAGE_KEYS, readStorage, removeStorage, writeStorage } from '@/app/lib/storage';
 import {
   ACCEPTED_PHOTO_TYPES,
-  MODE_IDS,
-  PROJECT_NAME_MAX,
   LOADING_STEPS_RO,
   LOADING_STEPS_EN,
   MIN_PHOTO_SIDE,
@@ -49,10 +52,12 @@ import {
   validateDimensions,
 } from '@/app/lib/studio/validation';
 import DimensionsPanel from '@/app/components/studio/DimensionsPanel';
+import SpaceScenarioPanel from '@/app/components/studio/SpaceScenarioPanel';
 import StylePicker from '@/app/components/studio/StylePicker';
 import TelemetryBar from '@/app/components/studio/TelemetryBar';
 import StudioViewport from '@/app/components/studio/StudioViewport';
 import CostBreakdown from '@/app/components/studio/CostBreakdown';
+import ProcurementPanel from '@/app/components/studio/ProcurementPanel';
 import EngineeringPanel from '@/app/components/studio/EngineeringPanel';
 import ManufacturerSpecs from '@/app/components/studio/ManufacturerSpecs';
 import PrintBlueprint from '@/app/components/studio/PrintBlueprint';
@@ -61,7 +66,30 @@ import {
   DesignMode,
   RoomDimensions,
   SavedProject,
+  ScopeLevel,
+  SizePresetId,
 } from '@/app/types';
+
+// Cotele inițiale ale unui spațiu: dimensiunile lui implicite realiste + setările care
+// se păstrează la schimbarea spațiului (buget, intensitate AI, nivel de intervenție).
+function dimensionsForSpace(
+  mode: DesignMode,
+  spaceId: string,
+  keep: Pick<RoomDimensions, 'budget' | 'aiStrength' | 'scope'>,
+): RoomDimensions {
+  const space = getSpace(mode, spaceId);
+  const d = space.defaults;
+  return {
+    width: d.width,
+    length: d.length,
+    height: d.height,
+    doorsCount: d.doorsCount,
+    windowsCount: d.windowsCount,
+    layoutPreset: space.layouts[0].id,
+    focusIds: [],
+    ...keep,
+  };
+}
 
 // ── Pagina principală ────────────────────────────────────────────────────────
 export default function StudioPage() {
@@ -73,16 +101,13 @@ export default function StudioPage() {
   const [mode, setMode] = useState<DesignMode>('interiors');
   const [selectedSpace, setSelectedSpace] = useState(SPACE_MODES.interiors.spaces[0].id);
   const [selectedStyleId, setSelectedStyleId] = useState(VISUAL_STYLES[0].id);
-  const [roomDimensions, setRoomDimensions] = useState<RoomDimensions>({
-    width: 4,
-    length: 5,
-    height: 2.6,
-    doorsCount: 1,
-    windowsCount: 2,
-    budget: 'standard',
-    layoutPreset: SPACE_MODES.interiors.spaces[0].layouts[0].id,
-    aiStrength: 75,
-  });
+  const [roomDimensions, setRoomDimensions] = useState<RoomDimensions>(() =>
+    dimensionsForSpace('interiors', SPACE_MODES.interiors.spaces[0].id, {
+      budget: 'standard',
+      aiStrength: 75,
+      scope: DEFAULT_SCOPE,
+    }),
+  );
   const [originalImage, setOriginalImage] = useState<string | null>(null);
   const [aiSettings, setAiSettings] = useState<AiSettings>(DEFAULT_AI_SETTINGS);
   const [isAdvancedOpen, setIsAdvancedOpen] = useState(false);
@@ -188,7 +213,23 @@ export default function StudioPage() {
   const currentMode = SPACE_MODES[mode];
   const currentStyle = getStyle(selectedStyleId);
   const currentSpace = getSpace(mode, selectedSpace);
-  const currentLayouts = currentSpace.layouts;
+
+  // Presetări de mărime ale spațiului curent (Compact / Standard / Spacious)
+  const presetLabels: Record<SizePresetId, { ro: string; en: string }> = {
+    compact: { ro: 'Compact', en: 'Compact' },
+    standard: { ro: 'Standard', en: 'Standard' },
+    spacious: { ro: 'Spacious / Open', en: 'Spacious / Open' },
+  };
+  const sizePresets = SIZE_PRESET_IDS.map((id) => {
+    const p = getSizePreset(currentSpace, id);
+    return { id, label: t(presetLabels[id].ro, presetLabels[id].en), size: `${p.width} × ${p.length} m` };
+  });
+  const activePreset = detectSizePreset(currentSpace, roomDimensions.width, roomDimensions.length);
+  // Glisoarele merg până la ~1.5× presetarea „Spacious” (valori mai mari se pot tasta)
+  const sliderMax = {
+    width: Math.ceil(currentSpace.sizePresets.spacious.width * 1.5),
+    length: Math.ceil(currentSpace.sizePresets.spacious.length * 1.5),
+  };
 
   // Cantitățile (arii, materiale, iluminat) se recalculează live la fiecare schimbare a cotelor
   const calculatedMaterials = useMemo(
@@ -238,9 +279,7 @@ export default function StudioPage() {
   // ── Clase ──────────────────────────────────────────────────────────────────
   const eyebrow = `${EYEBROW} ${sk.dim}`;
   const fieldCls = `w-full h-10 px-3 rounded-sm border text-xs font-mono outline-none transition-colors ${sk.input}`;
-  const seg = (active: boolean) =>
-    `flex-1 h-10 px-3 ${EYEBROW} cursor-pointer touch-manipulation transition-colors ${active ? sk.segOn : sk.segOff}`;
-  const textareaCls = `w-full px-3 py-2 rounded-sm border text-xs font-mono outline-none transition-colors resize-y min-h-[72px] ${sk.input}`;
+  const textareaCls = `w-full px-3 py-2 rounded-md border text-xs font-mono outline-none transition-colors resize-y min-h-[72px] ${sk.input}`;
 
   // ── Handlers ───────────────────────────────────────────────────────────────
 
@@ -251,8 +290,13 @@ export default function StudioPage() {
     runIdRef.current += 1;
     setMode(modeId);
     setSelectedSpace(nextSpace.id);
+    // Un spațiu nou pornește de la cotele lui implicite; scenariile alese nu se mai potrivesc și se șterg
     setRoomDimensions((p) =>
-      sanitizeDimensions({ ...p, layoutPreset: nextSpace.layouts[0].id }, modeId, nextSpace.id),
+      sanitizeDimensions(
+        dimensionsForSpace(modeId, nextSpace.id, { budget: p.budget, aiStrength: p.aiStrength, scope: p.scope }),
+        modeId,
+        nextSpace.id,
+      ),
     );
     setExcludedItemIds([]);
     setGeneratedImage(null);
@@ -265,6 +309,28 @@ export default function StudioPage() {
     applySpaceSelection(m, SPACE_MODES[m].spaces[0].id);
 
   const handleSpaceChange = (id: string) => applySpaceSelection(mode, id);
+
+  // Presetare de mărime: setează lățime, lungime, înălțime și ferestre dintr-un click
+  const handleSizePreset = (id: SizePresetId) => {
+    const p = getSizePreset(currentSpace, id);
+    setRoomDimensions((prev) => ({
+      ...prev,
+      width: p.width,
+      length: p.length,
+      height: p.height,
+      windowsCount: p.windowsCount,
+    }));
+  };
+
+  // Scenariile (chips) se bifează / debifează; maximum MAX_FOCUS_CHIPS simultan
+  const handleToggleFocus = (id: string) =>
+    setRoomDimensions((p) => {
+      if (p.focusIds.includes(id)) return { ...p, focusIds: p.focusIds.filter((x) => x !== id) };
+      if (p.focusIds.length >= MAX_FOCUS_CHIPS) return p;
+      return { ...p, focusIds: [...p.focusIds, id] };
+    });
+
+  const handleScopeChange = (scope: ScopeLevel) => setRoomDimensions((p) => ({ ...p, scope }));
 
   const handleStyleSelect = (id: string) => {
     setSelectedStyleId(id);
@@ -586,70 +652,10 @@ export default function StudioPage() {
               </h1>
             </div>
 
-            {/* 01 · Tip de spațiu */}
-            <section className={`border rounded-sm ${sk.card}`}>
+            {/* 01 · Fotografie */}
+            <section className={`border rounded-md ${sk.card}`}>
               <div className={`px-4 h-9 flex items-center border-b ${sk.line} ${eyebrow}`}>
-                01 · {t('Tip de spațiu', 'Space category')}
-              </div>
-              <div className="p-4 space-y-3">
-                <label className="block space-y-1.5">
-                  <span className={eyebrow}>{t('Nume proiect', 'Project name')}</span>
-                  <input
-                    type="text"
-                    value={projectName}
-                    maxLength={PROJECT_NAME_MAX}
-                    onChange={(e) => setProjectName(e.target.value)}
-                    placeholder={defaultProjectName}
-                    className={fieldCls}
-                  />
-                </label>
-                <div className={`flex border rounded-sm overflow-hidden divide-x ${sk.line} ${sk.divide}`}>
-                  {MODE_IDS.map((m) => (
-                    <button key={m} type="button" onClick={() => handleModeChange(m)} className={seg(mode === m)}>
-                      {lang === 'ro' ? SPACE_MODES[m].labelRo : SPACE_MODES[m].labelEn}
-                    </button>
-                  ))}
-                </div>
-                <select value={selectedSpace} onChange={(e) => handleSpaceChange(e.target.value)} className={fieldCls} aria-label={t('Spațiu', 'Space')}>
-                  {currentMode.spaces.map((s) => (
-                    <option key={s.id} value={s.id} className={sk.option}>
-                      {lang === 'ro' ? s.labelRo : s.labelEn}
-                    </option>
-                  ))}
-                </select>
-                <select
-                  value={roomDimensions.layoutPreset}
-                  onChange={(e) => setRoomDimensions((p) => ({ ...p, layoutPreset: e.target.value }))}
-                  className={fieldCls}
-                  aria-label={t('Configurație', 'Layout')}
-                >
-                  {currentLayouts.map((l) => (
-                    <option key={l.id} value={l.id} className={sk.option}>
-                      {lang === 'ro' ? l.labelRo : l.labelEn}
-                    </option>
-                  ))}
-                </select>
-              </div>
-            </section>
-
-            {/* 02 · Cote */}
-            <DimensionsPanel
-              lang={lang}
-              isDark={isDark}
-              roomDimensions={roomDimensions}
-              floorArea={calculatedMaterials.floorArea}
-              issues={dimensionIssues}
-              onNumberChange={handleNumberChange}
-              onBudgetChange={(budget) => setRoomDimensions((p) => ({ ...p, budget }))}
-            />
-
-            {/* 03 · Stil arhitectural */}
-            <StylePicker lang={lang} isDark={isDark} selectedStyleId={selectedStyleId} onSelect={handleStyleSelect} />
-
-            {/* 04 · Fotografie */}
-            <section className={`border rounded-sm ${sk.card}`}>
-              <div className={`px-4 h-9 flex items-center border-b ${sk.line} ${eyebrow}`}>
-                04 · {t('Fotografie', 'Photo')}
+                01 · {t('Fotografie', 'Photo')}
               </div>
               <div className="p-4 space-y-4">
                 <input ref={fileInputRef} type="file" accept={ACCEPTED_PHOTO_TYPES.join(',')} onChange={handlePhotoChange} className="hidden" />
@@ -658,7 +664,7 @@ export default function StudioPage() {
                   disabled={isLoading || isPhotoLoading}
                   aria-busy={isPhotoLoading}
                   onClick={() => fileInputRef.current?.click()}
-                  className={`relative w-full h-40 border border-dashed rounded-sm flex flex-col items-center justify-center gap-2 overflow-hidden cursor-pointer touch-manipulation transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${sk.btnGhost}`}
+                  className={`relative w-full h-40 border border-dashed rounded-md flex flex-col items-center justify-center gap-2 overflow-hidden cursor-pointer touch-manipulation transition-colors disabled:cursor-not-allowed disabled:opacity-60 ${sk.btnGhost}`}
                 >
                   {isPhotoLoading
                     ? <span className={EYEBROW}>{t('Se procesează fotografia…', 'Processing photo…')}</span>
@@ -681,10 +687,59 @@ export default function StudioPage() {
                     type="range" min={40} max={100}
                     value={roomDimensions.aiStrength}
                     onChange={(e) => handleNumberChange('aiStrength', e)}
-                    className="w-full accent-emerald-500 touch-manipulation touch-pan-y"
+                    className="w-full accent-[var(--foreground)] touch-manipulation touch-pan-y"
                   />
                 </label>
 
+              </div>
+            </section>
+
+            {/* 02 · Spațiu & scenariu */}
+            <SpaceScenarioPanel
+              lang={lang}
+              isDark={isDark}
+              projectName={projectName}
+              defaultProjectName={defaultProjectName}
+              mode={mode}
+              spaceId={selectedSpace}
+              layoutId={roomDimensions.layoutPreset}
+              focusIds={roomDimensions.focusIds}
+              scope={roomDimensions.scope}
+              onProjectNameChange={setProjectName}
+              onModeChange={handleModeChange}
+              onSpaceChange={handleSpaceChange}
+              onLayoutChange={(layoutPreset) => setRoomDimensions((p) => ({ ...p, layoutPreset }))}
+              onToggleFocus={handleToggleFocus}
+              onScopeChange={handleScopeChange}
+            />
+
+            {/* 03 · Stil arhitectural */}
+            <StylePicker lang={lang} isDark={isDark} selectedStyleId={selectedStyleId} onSelect={handleStyleSelect} />
+
+            {/* 04 · Cote & cost live */}
+            <DimensionsPanel
+              lang={lang}
+              isDark={isDark}
+              roomDimensions={roomDimensions}
+              floorArea={calculatedMaterials.floorArea}
+              issues={dimensionIssues}
+              onNumberChange={handleNumberChange}
+              onBudgetChange={(budget) => setRoomDimensions((p) => ({ ...p, budget }))}
+              presets={sizePresets}
+              activePreset={activePreset}
+              onPresetSelect={handleSizePreset}
+              sliderMax={sliderMax}
+              costTotal={costEstimate.total}
+              costMin={costEstimate.min}
+              costMax={costEstimate.max}
+            />
+
+            {/* 05 · Generare */}
+            <section className={`border rounded-md ${sk.card}`}>
+              <div className={`px-4 h-9 flex items-center border-b ${sk.line} ${eyebrow}`}>
+                05 · {t('Generare', 'Generate')}
+              </div>
+              <div className="p-4 space-y-4">
                 {/* Setări avansate AI */}
                 <div className={`border rounded-sm ${sk.line}`}>
                   <button
@@ -718,14 +773,14 @@ export default function StudioPage() {
                           <span>{t('Pași de inferență', 'Inference steps')}</span>
                           <span className={`tabular-nums ${sk.strong}`}>{aiSettings.inferenceSteps}</span>
                         </span>
-                        <input type="range" min={AI_LIMITS.inferenceSteps.min} max={AI_LIMITS.inferenceSteps.max} step={AI_LIMITS.inferenceSteps.step} value={aiSettings.inferenceSteps} onChange={(e) => updateAi('inferenceSteps', Number(e.target.value))} className="w-full accent-emerald-500 touch-manipulation touch-pan-y" />
+                        <input type="range" min={AI_LIMITS.inferenceSteps.min} max={AI_LIMITS.inferenceSteps.max} step={AI_LIMITS.inferenceSteps.step} value={aiSettings.inferenceSteps} onChange={(e) => updateAi('inferenceSteps', Number(e.target.value))} className="w-full accent-[var(--foreground)] touch-manipulation touch-pan-y" />
                       </label>
                       <label className="block space-y-2">
                         <span className={`flex justify-between ${eyebrow}`}>
                           <span>{t('Scală de ghidaj (CFG)', 'Guidance scale (CFG)')}</span>
                           <span className={`tabular-nums ${sk.strong}`}>{aiSettings.guidanceScale}</span>
                         </span>
-                        <input type="range" min={AI_LIMITS.guidanceScale.min} max={AI_LIMITS.guidanceScale.max} step={AI_LIMITS.guidanceScale.step} value={aiSettings.guidanceScale} onChange={(e) => updateAi('guidanceScale', Number(e.target.value))} className="w-full accent-emerald-500 touch-manipulation touch-pan-y" />
+                        <input type="range" min={AI_LIMITS.guidanceScale.min} max={AI_LIMITS.guidanceScale.max} step={AI_LIMITS.guidanceScale.step} value={aiSettings.guidanceScale} onChange={(e) => updateAi('guidanceScale', Number(e.target.value))} className="w-full accent-[var(--foreground)] touch-manipulation touch-pan-y" />
                       </label>
                       <label className="block space-y-1.5">
                         <span className={eyebrow}>Seed ({t('gol = aleatoriu', 'empty = random')})</span>
@@ -793,8 +848,10 @@ export default function StudioPage() {
             </section>
           </div>
 
-          {/* ─── COLOANA DREAPTĂ: rezultat + deviz tehnic ──────────────── */}
-          <div className="lg:col-span-7 space-y-6 relative z-0">
+          {/* ─── COLOANA DREAPTĂ: rezultat + deviz tehnic ──────────────────
+              Desktop: panou lipit sub bara de navigare (lg:sticky lg:top-24) — randarea rămâne vizibilă
+              cât timp derulezi setările din stânga; panourile de sub ea se derulează în interiorul coloanei. */}
+          <div className="lg:col-span-7 space-y-6 relative z-0 lg:sticky lg:top-24 lg:self-start lg:max-h-[calc(100dvh-7rem)] lg:overflow-y-auto lg:overscroll-contain lg:pr-1 lg:pb-6">
 
             <StudioViewport
               lang={lang}
@@ -811,6 +868,15 @@ export default function StudioPage() {
             <EngineeringPanel lang={lang} isDark={isDark} isLoading={isLoading} specRows={specRows} />
 
             <CostBreakdown lang={lang} isDark={isDark} cost={costEstimate} styleName={styleName} />
+
+            <ProcurementPanel
+              lang={lang}
+              isDark={isDark}
+              input={{ mode, spaceType: selectedSpace, styleId: selectedStyleId, dimensions: roomDimensions }}
+              renderKey={generatedImage && !isLoading ? `${generatedImage.length}:${generatedImage.slice(-48)}` : null}
+              projectName={resolvedProjectName}
+              getProjectId={() => loadedProjectIdRef.current}
+            />
 
             {generatedImage && (
               <ManufacturerSpecs

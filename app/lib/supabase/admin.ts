@@ -1,4 +1,5 @@
 // app/lib/supabase/admin.ts — SERVER ONLY. Uses the service_role key: never import from client code.
+import 'server-only'; // Build eșuează dacă un component client importă acest modul (izolarea secretelor)
 import { createClient, type SupabaseClient } from '@supabase/supabase-js';
 import { normalizeSupabaseUrl, stripQuotes } from './url';
 

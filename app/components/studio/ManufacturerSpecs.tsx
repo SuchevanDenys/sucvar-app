@@ -32,7 +32,7 @@ const ManufacturerSpecs = forwardRef<HTMLElement, ManufacturerSpecsProps>(functi
   const eyebrow = `${EYEBROW} ${sk.dim}`;
   return (
     <section ref={ref} className="space-y-4 scroll-mt-20">
-      <div className={`border rounded-sm overflow-hidden ${sk.card}`}>
+      <div className={`border rounded-md overflow-hidden ${sk.card}`}>
         <div className={`px-4 h-9 flex items-center justify-between border-b ${sk.line} ${eyebrow}`}>
           <span className="flex items-center gap-2">
             <ClipboardList className={`w-3.5 h-3.5 ${sk.accent}`} />

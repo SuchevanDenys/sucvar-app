@@ -1,34 +1,33 @@
 // app/lib/theme/tokens.ts
 // Color classes used by every page (language/theme state lives in usePrefs.ts).
 
-// Warm Editorial palette: ivory + matte black + olive green
+// Monochrome gallery palette: pure white / stone grey (light) · matte charcoal (dark). Zero blue.
 const lightUi = {
-  page: 'bg-[#F7F6F2] text-[#1A1A1A]',
-  header: 'bg-[#F7F6F2]/90 border-stone-300/80 text-[#1A1A1A]',
-  card: 'bg-white border-stone-200/90 text-[#1A1A1A]',
-  soft: 'bg-[#EFECE6]',
-  line: 'border-stone-200/90',
-  muted: 'text-stone-600',
-  accent: 'text-[#3B4D43]',
-  btn: 'bg-[#141413] text-white hover:bg-[#3B4D43]',
+  page: 'bg-white text-[#111111]',
+  header: 'bg-white/90 backdrop-blur-md border-[#E5E5E5] text-[#111111]',
+  card: 'bg-white border-[#E5E5E5] text-[#111111]',
+  soft: 'bg-[#F5F5F5]',
+  line: 'border-[#E5E5E5]',
+  muted: 'text-[#666666]',
+  accent: 'text-[#111111]',
+  btn: 'bg-[#111111] text-white hover:bg-[#2A2A2A]',
   btnGhost:
-    'border-stone-300 text-[#1A1A1A] hover:border-stone-900 hover:bg-stone-200/40',
-  input: 'border-stone-300 text-[#1A1A1A] focus:border-[#141413]',
+    'border-[#E5E5E5] text-[#111111] hover:border-[#111111] hover:bg-[#F5F5F5]',
+  input: 'border-[#E5E5E5] text-[#111111] focus:border-[#111111]',
 };
 
-// Dark mode: obsidian and charcoal (no generic blue)
 const darkUi = {
-  page: 'bg-[#121211] text-[#F4F3EF]',
-  header: 'bg-[#121211]/90 border-stone-800 text-[#F4F3EF]',
-  card: 'bg-[#1A1A18] border-stone-800 text-[#F4F3EF]',
-  soft: 'bg-[#161614]',
-  line: 'border-stone-800',
-  muted: 'text-stone-400',
-  accent: 'text-[#8FAE9B]',
-  btn: 'bg-[#F4F3EF] text-[#141413] hover:bg-[#8FAE9B] hover:text-[#141413]',
+  page: 'bg-[#0B0B0C] text-[#F5F5F5]',
+  header: 'bg-[#0B0B0C]/90 backdrop-blur-md border-[#262629] text-[#F5F5F5]',
+  card: 'bg-[#141416] border-[#262629] text-[#F5F5F5]',
+  soft: 'bg-[#1C1C1F]',
+  line: 'border-[#262629]',
+  muted: 'text-[#A1A1AA]',
+  accent: 'text-white',
+  btn: 'bg-white text-[#111111] hover:bg-[#E5E5E5]',
   btnGhost:
-    'border-stone-700 text-[#F4F3EF] hover:border-stone-500 hover:bg-stone-800/50',
-  input: 'border-stone-700 text-[#F4F3EF] focus:border-[#8FAE9B]',
+    'border-[#262629] text-[#F5F5F5] hover:border-[#F5F5F5]/60 hover:bg-[#1C1C1F]',
+  input: 'border-[#262629] text-[#F5F5F5] focus:border-[#F5F5F5]',
 };
 
 // Every page calls getUi(isDark) and uses the returned classes

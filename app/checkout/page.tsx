@@ -116,8 +116,8 @@ export default function CheckoutPage() {
               onChange={(next) => writeStorage(STORAGE_KEYS.billingInterval, next)}
               isRo={lang === 'ro'}
               wrapClass={ui.line}
-              segOn="bg-[#141413] text-white"
-              segOff={`${ui.muted} hover:bg-stone-500/10`}
+              segOn={isDark ? "bg-white text-[#111111]" : "bg-[#111111] text-white"}
+              segOff={`${ui.muted} hover:bg-neutral-500/10`}
             />
           )}
 
@@ -167,7 +167,7 @@ export default function CheckoutPage() {
           </div>
 
           {alreadyCovered && (
-            <div role="status" className={`p-4 rounded-md text-sm leading-relaxed space-y-3 ${ui.soft}`}>
+            <div role="status" className={`p-4 rounded-sm text-sm leading-relaxed space-y-3 ${ui.soft}`}>
               <p>
                 {currentTier === plan.id
                   ? t('Ai deja acest plan activ. Nu este nevoie de o nouă plată.', 'You already have this plan active. No new payment is needed.')
@@ -181,7 +181,7 @@ export default function CheckoutPage() {
           )}
 
           {!isFreePlan && !alreadyCovered && (
-            <div className={`p-4 rounded-md flex items-start gap-3 text-xs leading-relaxed ${ui.soft}`}>
+            <div className={`p-4 rounded-sm flex items-start gap-3 text-xs leading-relaxed ${ui.soft}`}>
               <ShieldCheck className={`w-4 h-4 mt-0.5 shrink-0 ${ui.accent}`} />
               <p>
                 {t(
@@ -208,7 +208,7 @@ export default function CheckoutPage() {
             {isFreePlan ? (
               <Link
                 href="/generate"
-                className={`inline-flex items-center gap-2 h-12 px-7 rounded-md text-xs font-semibold uppercase tracking-widest transition-colors touch-manipulation ${ui.btn}`}
+                className={`inline-flex items-center gap-2 h-12 px-7 rounded-sm text-xs font-semibold uppercase tracking-widest transition-colors touch-manipulation ${ui.btn}`}
               >
                 <span>{t('Începe gratuit', 'Start for free')}</span>
                 <ArrowRight className="w-4 h-4" />
@@ -218,7 +218,7 @@ export default function CheckoutPage() {
                 type="button"
                 onClick={handlePay}
                 disabled={isPaying}
-                className={`inline-flex items-center gap-2 h-12 px-7 rounded-md text-xs font-semibold uppercase tracking-widest transition-colors disabled:opacity-50 cursor-pointer touch-manipulation ${ui.btn}`}
+                className={`inline-flex items-center gap-2 h-12 px-7 rounded-sm text-xs font-semibold uppercase tracking-widest transition-colors disabled:opacity-50 cursor-pointer touch-manipulation ${ui.btn}`}
               >
                 {isPaying && (
                   <span className="inline-block w-3 h-3 rounded-full border-2 border-current border-t-transparent animate-spin" />
@@ -234,7 +234,7 @@ export default function CheckoutPage() {
             {needsLogin && (
               <Link
                 href="/login"
-                className={`inline-flex items-center h-12 px-6 rounded-md border text-xs font-semibold uppercase tracking-widest transition-colors touch-manipulation ${ui.btnGhost}`}
+                className={`inline-flex items-center h-12 px-6 rounded-sm border text-xs font-semibold uppercase tracking-widest transition-colors touch-manipulation ${ui.btnGhost}`}
               >
                 {t('Autentifică-te', 'Sign in')}
               </Link>
@@ -242,7 +242,7 @@ export default function CheckoutPage() {
 
             <Link
               href="/#pricing"
-              className={`inline-flex items-center gap-2 h-12 px-6 rounded-md border text-xs font-semibold uppercase tracking-widest transition-colors touch-manipulation ${ui.btnGhost}`}
+              className={`inline-flex items-center gap-2 h-12 px-6 rounded-sm border text-xs font-semibold uppercase tracking-widest transition-colors touch-manipulation ${ui.btnGhost}`}
             >
               <ArrowLeft className="w-4 h-4" />
               <span>{t('Alege alt plan', 'Choose another plan')}</span>

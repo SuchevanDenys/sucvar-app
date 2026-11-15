@@ -19,7 +19,7 @@ export default function EngineeringPanel({ lang, isDark, isLoading, specRows }: 
   const t = (ro: string, en: string) => (lang === 'ro' ? ro : en);
   const eyebrow = `${EYEBROW} ${sk.dim}`;
   return (
-  <section className={`border rounded-sm overflow-hidden ${sk.card}`}>
+  <section className={`border rounded-md overflow-hidden ${sk.card}`}>
     <div className={`px-4 h-9 flex items-center justify-between border-b ${sk.line} ${eyebrow}`}>
       <span>{t('Specificații inginerești', 'Engineering specifications')}</span>
       <LiveDot

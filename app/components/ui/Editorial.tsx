@@ -18,10 +18,10 @@ export function LiveDot({
     <span className={`inline-flex items-center gap-2 ${EYEBROW} ${className}`}>
       <span className="relative flex h-1.5 w-1.5">
         {active && (
-          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-emerald-400 opacity-60" />
+          <span className="absolute inline-flex h-full w-full animate-ping rounded-full bg-current opacity-40" />
         )}
         <span
-          className={`relative inline-flex h-1.5 w-1.5 rounded-full ${active ? 'bg-emerald-400' : 'bg-amber-400'}`}
+          className={`relative inline-flex h-1.5 w-1.5 rounded-full ${active ? 'bg-current' : 'bg-current opacity-40'}`}
         />
       </span>
       {label}
@@ -29,20 +29,7 @@ export function LiveDot({
   );
 }
 
-/** Four corner registration marks, placed inside a `relative` parent. */
-export function Corners({ isDark }: { isDark: boolean }) {
-  const c = isDark ? 'border-white/40' : 'border-black/40';
-  const base = `pointer-events-none absolute h-2.5 w-2.5 ${c}`;
-  return (
-    <>
-      <span className={`${base} -left-px -top-px border-l border-t`} />
-      <span className={`${base} -right-px -top-px border-r border-t`} />
-      <span className={`${base} -bottom-px -left-px border-b border-l`} />
-      <span className={`${base} -bottom-px -right-px border-b border-r`} />
-    </>
-  );
-}
-/** Architectural frame: corner registration marks + mid-axis crosshair ticks + FIG caption. */
+/** Architectural frame with FIG caption. */
 export function Frame({
   isDark,
   label,
@@ -57,8 +44,6 @@ export function Frame({
   children: React.ReactNode;
 }) {
   const sk = getSkin(isDark);
-  const mark = `pointer-events-none absolute h-3.5 w-3.5 ${isDark ? 'border-white/50' : 'border-black/50'}`;
-  const tick = `pointer-events-none absolute ${ruleClass(isDark)}`;
   return (
     <figure className={`relative ${className}`}>
       {(label || meta) && (
@@ -67,15 +52,7 @@ export function Frame({
           <span className="tabular-nums">{meta}</span>
         </figcaption>
       )}
-      <div className={`relative border p-2 sm:p-3 ${sk.line}`}>
-        <span className={`${mark} -left-px -top-px border-l border-t`} />
-        <span className={`${mark} -right-px -top-px border-r border-t`} />
-        <span className={`${mark} -bottom-px -left-px border-b border-l`} />
-        <span className={`${mark} -bottom-px -right-px border-b border-r`} />
-        <span className={`${tick} -top-2 left-1/2 h-2 w-px`} />
-        <span className={`${tick} -bottom-2 left-1/2 h-2 w-px`} />
-        <span className={`${tick} -left-2 top-1/2 h-px w-2`} />
-        <span className={`${tick} -right-2 top-1/2 h-px w-2`} />
+      <div className={`relative border p-2 sm:p-3 ${sk.line} ${isDark ? 'bg-[#141416]' : 'bg-[#F5F5F5]'}`}>
         {children}
       </div>
     </figure>
@@ -105,7 +82,7 @@ export function SectionHeading({
         {eyebrow}
       </p>
       <h2
-        className={`mt-6 max-w-2xl text-3xl sm:text-[2.6rem] font-medium leading-[1.1] tracking-[-0.03em] ${sk.strong}`}
+        className={`mt-6 max-w-2xl text-3xl sm:text-[2.6rem] font-semibold leading-[1.08] tracking-tight ${sk.strong}`}
       >
         {title}
         {titleMuted ? <> <span className={sk.muted}>{titleMuted}</span></> : null}
