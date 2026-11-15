@@ -17,13 +17,23 @@ import type { SupabaseClient } from '@supabase/supabase-js';
 import { getAdmin } from '@/app/lib/supabase/admin';
 import { normalizeInterval, normalizeTier, resolveEffectiveTier } from '@/app/lib/plan/tiers';
 import type { BillingInterval, PlanTier } from '@/app/types';
-import type {
-  EstimatePayload,
-  EstimateRecord,
-  EstimateRow,
-  ProfileRow,
-  ProjectSummaryRow,
+import { calculateEngineering } from '@/app/data/catalog';
+import { sanitizeDimensions } from '@/app/lib/studio/validation';
+import {
+  CLIENT_STATUSES,
+  type ClientDecision,
+  type ClientStatus,
+  type EstimateLineItem,
+  type EstimatePayload,
+  type EstimateRecord,
+  type EstimateRow,
+  type ProfileRow,
+  type ProjectSharing,
+  type ProjectSummaryRow,
+  type PublicMaterial,
+  type PublicProject,
 } from '@/app/lib/database.types';
+import type { DesignMode } from '@/app/types';
 
 // ── Erori ────────────────────────────────────────────────────────────────────
 
@@ -70,7 +80,7 @@ function toDbError(error: PgLikeError, what: string): DbError {
     return new DbError(
       503,
       'MIGRATION_REQUIRED',
-      `Baza de date nu este migrată (${what}). Rulează supabase/migrations/001_sucvar_schema.sql.`
+      `Baza de date nu este migrată (${what}). Rulează migrările din supabase/migrations/ (001, 002).`
     );
   }
   if (error.code === '23505') return new DbError(409, 'CONFLICT', 'Înregistrarea există deja.'); // unique_violation
@@ -471,4 +481,172 @@ export async function deleteEstimate(userId: string, estimateId: string): Promis
     .select('id');
   if (error) throw toDbError(error, 'ștergere b2b_estimates');
   return (data?.length ?? 0) > 0;
+}
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PORTAL PUBLIC (/p/[id]) — partajare + aprobarea clientului final (migrarea 002)
+// ═════════════════════════════════════════════════════════════════════════════
+//
+// GRANIȚA DE SECURITATE (proiecție de date):
+//   Clientul service_role vede TOT rândul, inclusiv devizul B2B cu marja de profit, contingența,
+//   tarifele orare și prețurile de achiziție. Aceste valori sunt avantajul comercial al
+//   antreprenorului: dacă ar ajunge în browserul clientului final (chiar și ascunse în JSON-ul
+//   rețelei, nu doar în UI), acesta ar putea calcula exact cât câștigă firma.
+//   De aceea:
+//     1. SELECT-urile enumeră explicit coloanele (niciodată `*`), deci coloanele interne nici nu
+//        sunt citite din Postgres;
+//     2. rezultatul este un obiect `PublicProject` construit câmp cu câmp — nu un rând „curățat";
+//     3. din deviz se trimit doar denumire + unitate + cantitate și totalul final (deja cu marja
+//        inclusă), niciodată prețuri unitare, procente sau note.
+
+const SHARING_COLUMNS = 'id, is_public, client_status, client_feedback, client_reviewed_at';
+
+function toClientStatus(v: unknown): ClientStatus {
+  return CLIENT_STATUSES.includes(v as ClientStatus) ? (v as ClientStatus) : 'pending';
+}
+
+function rowToSharing(row: Record<string, unknown>): ProjectSharing {
+  return {
+    projectId: String(row.id),
+    isPublic: row.is_public === true,
+    clientStatus: toClientStatus(row.client_status),
+    clientFeedback: typeof row.client_feedback === 'string' && row.client_feedback ? row.client_feedback : null,
+    clientReviewedAt: typeof row.client_reviewed_at === 'string' ? row.client_reviewed_at : null,
+  };
+}
+
+/** Starea de partajare a proiectelor proprii. Bază nemigrată (fără coloane) => listă goală, fără eroare. */
+export async function listProjectSharing(
+  userId: string,
+  projectId?: string
+): Promise<{ migrated: boolean; items: ProjectSharing[] }> {
+  let query = admin().from('projects').select(SHARING_COLUMNS).eq('user_id', userId);
+  if (projectId) query = query.eq('id', projectId);
+  const { data, error } = await query.order('created_at', { ascending: false }).limit(200);
+  if (isMissingColumn(error)) return { migrated: false, items: [] };
+  if (error) throw toDbError(error, 'citire partajare projects');
+  return { migrated: true, items: ((data ?? []) as Record<string, unknown>[]).map(rowToSharing) };
+}
+
+/** Publică / retrage linkul public. Filtrul pe user_id garantează că doar proprietarul îl schimbă. */
+export async function setProjectPublic(userId: string, projectId: string, isPublic: boolean): Promise<ProjectSharing> {
+  const { data, error } = await admin()
+    .from('projects')
+    .update({ is_public: isPublic })
+    .eq('id', projectId)
+    .eq('user_id', userId)
+    .select(SHARING_COLUMNS);
+  if (error) throw toDbError(error, 'actualizare is_public');
+  const row = (data as Record<string, unknown>[] | null)?.[0];
+  if (!row) {
+    throw new DbError(404, 'NOT_FOUND', 'Proiectul nu există în cloud. Salvează-l în Supabase înainte de a-l partaja.');
+  }
+  return rowToSharing(row);
+}
+
+// Coloanele citite pentru portal. user_id se citește DOAR pentru a găsi devizul proprietarului;
+// nu este copiat în obiectul public.
+const PUBLIC_PROJECT_COLUMNS =
+  'id, user_id, title, mode, space_type, style_id, dimensions, original_image, generated_image, total_budget, created_at, client_status, client_reviewed_at';
+// Din deviz: fără margin_pct, contingency_pct, rate_override, scope, client (note interne) sau subtotal.
+const PUBLIC_ESTIMATE_COLUMNS = 'doc_no, area_m2, line_items, total';
+
+function toPublicMaterials(raw: unknown): PublicMaterial[] {
+  if (!Array.isArray(raw)) return [];
+  return (raw as Partial<EstimateLineItem>[])
+    .filter((it) => it && typeof it === 'object' && Number(it.qty) > 0 && (it.ro || it.en))
+    .slice(0, 200)
+    .map((it) => ({
+      // Proiecție explicită: `price` (preț de achiziție) este omis intenționat
+      category: String(it.cat ?? '').slice(0, 40),
+      nameRo: String(it.ro || it.en || '').slice(0, 200),
+      nameEn: String(it.en || it.ro || '').slice(0, 200),
+      unit: String(it.unit ?? '').slice(0, 20),
+      qty: Math.round(Number(it.qty) * 100) / 100,
+    }));
+}
+
+/** Proiectul public sau null (inexistent SAU privat — nu dezvăluim care dintre ele). */
+export async function getPublicProject(projectId: string): Promise<PublicProject | null> {
+  const db = admin();
+  const { data, error } = await db
+    .from('projects')
+    .select(PUBLIC_PROJECT_COLUMNS)
+    .eq('id', projectId)
+    .eq('is_public', true)
+    .maybeSingle();
+  if (isMissingColumn(error)) return null; // bază nemigrată: niciun proiect nu este public
+  if (error) throw toDbError(error, 'citire proiect public');
+  if (!data) return null;
+  const row = data as Record<string, unknown>;
+
+  // Devizul B2B al proprietarului (opțional). Căutat după (user_id, project_id) — același
+  // index unic ca la salvare — ca un deviz al altui cont pentru același id să nu fie folosit.
+  let estimate: Record<string, unknown> | null = null;
+  if (typeof row.user_id === 'string') {
+    const est = await db
+      .from('b2b_estimates')
+      .select(PUBLIC_ESTIMATE_COLUMNS)
+      .eq('user_id', row.user_id)
+      .eq('project_id', projectId)
+      .maybeSingle();
+    if (est.error && !isMissingTable(est.error)) console.warn('[SUCVAR] deviz public:', est.error.message);
+    estimate = (est.data as Record<string, unknown> | null) ?? null;
+  }
+
+  const mode: DesignMode =
+    row.mode === 'exteriors' || row.mode === 'gardens' ? row.mode : 'interiors';
+  const spaceType = String(row.space_type ?? 'kitchen');
+  const dims = sanitizeDimensions(row.dimensions, mode, spaceType);
+  const estimateTotal = Number(estimate?.total) || 0;
+  const estimateArea = Number(estimate?.area_m2) || 0;
+  const id = String(row.id);
+  const docNo = typeof estimate?.doc_no === 'string' ? estimate.doc_no.trim() : '';
+
+  return {
+    id,
+    reference: docNo || `SUC-${id.replace(/[^a-z0-9]/gi, '').slice(0, 8).toUpperCase()}`,
+    title: String(row.title ?? '').trim() || 'Proiect SUCVAR',
+    mode,
+    spaceType,
+    styleId: String(row.style_id ?? 'scandinavian'),
+    dimensions: {
+      width: dims.width,
+      length: dims.length,
+      height: dims.height,
+      doorsCount: dims.doorsCount,
+      windowsCount: dims.windowsCount,
+    },
+    areaM2: estimateArea > 0 ? estimateArea : calculateEngineering(dims, mode, spaceType).floorArea,
+    originalImage: typeof row.original_image === 'string' ? row.original_image : null,
+    generatedImage: typeof row.generated_image === 'string' ? row.generated_image : null,
+    materials: toPublicMaterials(estimate?.line_items),
+    clientTotal: Math.round((estimateTotal > 0 ? estimateTotal : Number(row.total_budget) || 0) * 100) / 100,
+    vatIncluded: estimateTotal > 0,
+    clientStatus: toClientStatus(row.client_status),
+    clientReviewedAt: typeof row.client_reviewed_at === 'string' ? row.client_reviewed_at : null,
+    createdAt: String(row.created_at ?? ''),
+  };
+}
+
+/** Decizia clientului final. Scrie DOAR coloanele client_* și DOAR pe proiecte publice. */
+export async function submitClientReview(
+  projectId: string,
+  decision: ClientDecision,
+  feedback: string | null
+): Promise<{ clientStatus: ClientStatus; clientReviewedAt: string | null } | null> {
+  const { data, error } = await admin()
+    .from('projects')
+    .update({ client_status: decision, client_feedback: feedback, client_reviewed_at: new Date().toISOString() })
+    .eq('id', projectId)
+    .eq('is_public', true)
+    .select('client_status, client_reviewed_at');
+  if (isMissingColumn(error)) return null;
+  if (error) throw toDbError(error, 'recenzie client');
+  const row = (data as Record<string, unknown>[] | null)?.[0];
+  if (!row) return null;
+  return {
+    clientStatus: toClientStatus(row.client_status),
+    clientReviewedAt: typeof row.client_reviewed_at === 'string' ? row.client_reviewed_at : null,
+  };
 }

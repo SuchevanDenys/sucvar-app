@@ -61,6 +61,7 @@ import ProcurementPanel from '@/app/components/studio/ProcurementPanel';
 import EngineeringPanel from '@/app/components/studio/EngineeringPanel';
 import ManufacturerSpecs from '@/app/components/studio/ManufacturerSpecs';
 import PrintBlueprint from '@/app/components/studio/PrintBlueprint';
+import ShareControl from '@/app/components/portal/ShareControl';
 import {
   AiSettings,
   DesignMode,
@@ -126,6 +127,8 @@ export default function StudioPage() {
   const [gateCode, setGateCode] = useState<'LIMIT_REACHED' | 'AUTH_REQUIRED' | null>(null);
   const [isSaving, setIsSaving] = useState(false); // blochează dublu-click pe „Salvează"
   const [isPhotoLoading, setIsPhotoLoading] = useState(false); // citire + redimensionare foto
+  // Proiectul salvat/deschis care poate primi un Link client (portalul public /p/[id])
+  const [shareProjectId, setShareProjectId] = useState<string | null>(null);
 
   // Plan de abonament (starter = gratuit / pro / agency) + consum lunar de generări
   const plan = usePlan();
@@ -154,6 +157,7 @@ export default function StudioPage() {
     const restoredSpace = getSpace(restoredMode, restored.spaceType);
     runIdRef.current += 1;
     loadedProjectIdRef.current = restored.id;
+    setShareProjectId(restored.id);
     setMode(restoredMode);
     setSelectedSpace(restoredSpace.id);
     setSelectedStyleId(getStyle(restored.styleId).id);
@@ -380,6 +384,7 @@ export default function StudioPage() {
       const resized = await resizePhoto(file);
       runIdRef.current += 1;
       loadedProjectIdRef.current = null;
+      setShareProjectId(null);
       setOriginalImage(resized);
       setGeneratedImage(null);
       setIsDemoResult(false);
@@ -515,6 +520,7 @@ export default function StudioPage() {
       }
 
       loadedProjectIdRef.current = null; // o randare nouă = un proiect nou la salvare
+      setShareProjectId(null);
       setGeneratedImage(result);
       setIsDemoResult(Boolean(data.isDemo));
       setProviderNote(typeof data.warning === 'string' ? data.warning : null);
@@ -584,6 +590,7 @@ export default function StudioPage() {
       loadedProjectIdRef.current = project.id; // salvările următoare actualizează, nu duplică
 
       if (result.savedToCloud) {
+        setShareProjectId(project.id); // doar proiectele din cloud pot fi publicate
         setSaveMessage(
           isUpdate
             ? t('Proiect actualizat în Supabase Cloud!', 'Project updated in Supabase Cloud!')
@@ -892,6 +899,17 @@ export default function StudioPage() {
                 onExportPdf={handleExportPdf}
                 onSave={handleSaveProject}
               />
+            )}
+
+            {/* 06 · Link client: publică proiectul salvat în portalul de aprobare /p/[id] */}
+            {shareProjectId && (
+              <section className={`border rounded-md ${sk.card}`}>
+                <div className={`px-4 h-9 flex items-center justify-between border-b ${sk.line} ${eyebrow}`}>
+                  <span>06 · {t('Prezentare client', 'Client presentation')}</span>
+                  <span className="font-mono normal-case tracking-normal tabular-nums">/p/{shareProjectId.slice(0, 8)}…</span>
+                </div>
+                <ShareControl key={shareProjectId} projectId={shareProjectId} isDark={isDark} isRo={lang === 'ro'} showStatus className="p-4" />
+              </section>
             )}
           </div>
         </div>

@@ -135,3 +135,56 @@ export interface EstimateRecord extends EstimatePayload {
   createdAt: string;
   updatedAt: string;
 }
+
+// ═════════════════════════════════════════════════════════════════════════════
+// PORTALUL PUBLIC (migrarea 002): partajare proiect + aprobarea clientului final
+// ═════════════════════════════════════════════════════════════════════════════
+
+export type ClientStatus = 'pending' | 'approved' | 'changes_requested';
+export const CLIENT_STATUSES: readonly ClientStatus[] = ['pending', 'approved', 'changes_requested'];
+/** Ce poate trimite clientul din portal (nu poate „reveni" la pending). */
+export type ClientDecision = Exclude<ClientStatus, 'pending'>;
+export const CLIENT_FEEDBACK_MAX = 500;
+
+/** Starea de partajare a unui proiect, văzută DOAR de proprietar (Studio / B2B). */
+export interface ProjectSharing {
+  projectId: string;
+  isPublic: boolean;
+  clientStatus: ClientStatus;
+  clientFeedback: string | null;
+  clientReviewedAt: string | null;
+}
+
+/** Material din lista publică: denumire + cantitate, FĂRĂ preț unitar (ar expune marja). */
+export interface PublicMaterial {
+  category: string;
+  nameRo: string;
+  nameEn: string;
+  unit: string;
+  qty: number;
+}
+
+/**
+ * Proiectul așa cum îl vede clientul final în /p/[id]. Este un obiect CONSTRUIT pe server
+ * câmp cu câmp (nu un rând filtrat): orice coloană nouă din DB rămâne privată până când
+ * cineva o adaugă explicit aici.
+ */
+export interface PublicProject {
+  id: string;
+  reference: string;
+  title: string;
+  mode: DesignMode;
+  spaceType: string;
+  styleId: string;
+  dimensions: Pick<RoomDimensions, 'width' | 'length' | 'height' | 'doorsCount' | 'windowsCount'>;
+  areaM2: number;
+  originalImage: string | null;
+  generatedImage: string | null;
+  materials: PublicMaterial[];
+  /** Totalul final pentru client (€). Din devizul B2B (cu TVA) sau estimarea Studio (orientativă). */
+  clientTotal: number;
+  vatIncluded: boolean;
+  clientStatus: ClientStatus;
+  clientReviewedAt: string | null;
+  createdAt: string;
+}

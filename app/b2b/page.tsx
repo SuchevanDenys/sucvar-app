@@ -66,6 +66,10 @@ import {
 import { fetchCloudWorkspaces, mergeCloudIntoLocal, pushWorkspace, workspaceToPayload } from '@/app/lib/b2b/cloud';
 import { getSkin, EYEBROW } from '@/app/lib/theme/skin';
 import { LiveDot } from '@/app/components/ui/Editorial';
+import ShareControl from '@/app/components/portal/ShareControl';
+import ClientStatusBadge from '@/app/components/portal/ClientStatusBadge';
+import { fetchSharing } from '@/app/lib/portal/client';
+import type { ProjectSharing } from '@/app/lib/database.types';
 
 export default function B2BPage() {
   const { isDark, isRo } = usePrefs();
@@ -82,6 +86,8 @@ export default function B2BPage() {
   const [loadedFor, setLoadedFor] = useState<string | null>(null); // emailul pentru care s-au încărcat proiectele
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [savedIds, setSavedIds] = useState<Set<string>>(() => new Set());
+  // Portal client (/p/[id]): link public + răspunsul clientului, per proiect. null = necunoscut (fără sesiune / eroare)
+  const [sharing, setSharingMap] = useState<Record<string, ProjectSharing> | null>(null);
 
   // ── Workspace state ─────────────────────────────────────────────────────
   const [projectName, setProjectName] = useState('');
@@ -111,9 +117,10 @@ export default function B2BPage() {
     // Proiectele și devizele din cloud se încarcă în paralel; devizele cloud mai noi se oglindesc
     // în localStorage ÎNAINTE de `savedWorkspaceIds`, deci `selectProject` le găsește local.
     // Dacă cloud-ul e indisponibil (offline / neautentificat), rămâne varianta locală.
-    Promise.all([fetchProjectsFromDb(email), fetchCloudWorkspaces()])
-      .then(([list, cloud]) => {
+    Promise.all([fetchProjectsFromDb(email), fetchCloudWorkspaces(), fetchSharing()])
+      .then(([list, cloud, share]) => {
         if (!alive) return;
+        setSharingMap(share.ok ? share.data : null);
         if (cloud.status === 'ok') {
           mergeCloudIntoLocal(cloud.data);
           setCloudState('synced');
@@ -380,6 +387,12 @@ export default function B2BPage() {
                               {t(sp.labelRo, sp.labelEn)} · {calculateEngineering(p.dimensions, p.mode, p.spaceType).floorArea} m² · {p.createdAt.slice(0, 10)}
                             </p>
                             {savedIds.has(p.id) && <p className={`${eyebrow} ${sk.accent}`}>{t('deviz salvat', 'estimate saved')}</p>}
+                            {(() => {
+                              const s = sharing?.[p.id];
+                              return s && (s.isPublic || s.clientReviewedAt) ? (
+                                <ClientStatusBadge status={s.clientStatus} isDark={isDark} isRo={isRo} className="mt-1" />
+                              ) : null;
+                            })()}
                           </div>
                         </button>
                       </li>
@@ -393,6 +406,20 @@ export default function B2BPage() {
                   <button type="button" onClick={reseedFromProject} className={`inline-flex items-center gap-1.5 h-8 px-2.5 rounded-sm text-xs cursor-pointer touch-manipulation ${sk.btnGhost}`}>
                     <RotateCcw className="w-3 h-3" /> {t('Recalculează materialele din proiect', 'Recompute materials from project')}
                   </button>
+                </div>
+              )}
+              {selectedProject && (
+                <div className={`px-5 py-4 border-t ${sk.line}`}>
+                  <p className={`mb-2 ${eyebrow}`}>{t('Prezentare client · aprobare', 'Client presentation · approval')}</p>
+                  <ShareControl
+                    key={selectedProject.id}
+                    projectId={selectedProject.id}
+                    isDark={isDark}
+                    isRo={isRo}
+                    initial={sharing ? (sharing[selectedProject.id] ?? null) : undefined}
+                    onChange={(s) => setSharingMap((prev) => ({ ...(prev ?? {}), [s.projectId]: s }))}
+                    showStatus
+                  />
                 </div>
               )}
             </section>
